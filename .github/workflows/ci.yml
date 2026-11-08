@@ -13,7 +13,7 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
       - name: Install FFmpeg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
@@ -34,7 +34,7 @@ jobs:
         # 22 is Hostinger's default Node.js version; 24 is what the VPS installer uses.
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -51,6 +51,6 @@ jobs:
     name: Shell scripts lint
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           shellcheck -S warning scripts/*.sh scripts/ci/*.sh scripts/server/*
