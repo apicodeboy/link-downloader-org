@@ -21,7 +21,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean }) {
   const styles: Record<Variant, string> = {
     primary: "bg-accent text-accent-fg hover:bg-accent-strong font-semibold",
-    secondary: "bg-surface-3 text-fg hover:bg-line border border-line-strong",
+    secondary: "bg-cream/10 text-fg hover:bg-cream/20 border border-cream/15",
     ghost: "text-muted hover:text-fg hover:bg-surface-3",
     danger: "text-bad hover:bg-bad/10 border border-bad/40",
   };
@@ -30,7 +30,7 @@ export function Button({
       {...rest}
       disabled={disabled || loading}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg px-4 h-11 text-sm transition-colors",
+        "inline-flex items-center justify-center gap-2 rounded-xl px-4 h-11 text-sm transition-colors",
         "disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
         styles[variant],
         className,
@@ -47,13 +47,13 @@ export function LinkButton({ href, children, variant = "secondary", download, cl
 }) {
   const styles: Record<Variant, string> = {
     primary: "bg-accent text-accent-fg hover:bg-accent-strong font-semibold",
-    secondary: "bg-surface-3 text-fg hover:bg-line border border-line-strong",
+    secondary: "bg-cream/10 text-fg hover:bg-cream/20 border border-cream/15",
     ghost: "text-muted hover:text-fg hover:bg-surface-3",
     danger: "text-bad hover:bg-bad/10 border border-bad/40",
   };
   return (
     <a href={href} download={download || undefined}
-       className={cx("inline-flex items-center justify-center gap-2 rounded-lg px-4 h-11 text-sm transition-colors", styles[variant], className)}>
+       className={cx("inline-flex items-center justify-center gap-2 rounded-xl px-4 h-11 text-sm transition-colors", styles[variant], className)}>
       {children}
     </a>
   );
@@ -66,7 +66,11 @@ export function Spinner({ className }: { className?: string }) {
 }
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cx("rounded-2xl border border-line bg-surface p-4 sm:p-6", className)}>{children}</section>;
+  return (
+    <section className={cx("rounded-3xl border border-cream/10 bg-surface/75 p-4 shadow-[0_20px_50px_-30px_rgba(0,0,0,.6)] backdrop-blur-sm sm:p-6", className)}>
+      {children}
+    </section>
+  );
 }
 
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
@@ -164,7 +168,7 @@ export function CopyButton({ text, label = "Copy", disabled }: { text: string; l
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-dashed border-line px-6 py-12 text-center">
+    <div className="rounded-3xl border border-dashed border-cream/20 px-6 py-12 text-center">
       <p className="font-medium">{title}</p>
       {children && <div className="mt-1 text-sm text-muted">{children}</div>}
     </div>
@@ -182,5 +186,5 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
 }
 
 export const inputClass =
-  "w-full rounded-lg border border-line-strong bg-surface-2 px-3 h-11 text-base sm:text-sm text-fg placeholder:text-faint " +
-  "focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/30";
+  "w-full rounded-xl border border-cream/15 bg-black/15 px-3 h-11 text-base sm:text-sm text-fg placeholder:text-faint " +
+  "focus:outline-none focus:border-cream/50 focus:ring-2 focus:ring-cream/20";

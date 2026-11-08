@@ -1,25 +1,33 @@
 @import "tailwindcss";
 
-/* Dark-only dashboard palette. Components use these tokens, never raw hex. */
+/* Matcha theme: olive frame, deep-green card, cream tiles, soft serif headlines.
+   Components use these tokens, never raw hex. */
 @theme {
-  --color-bg: #0b0d12;
-  --color-surface: #12151c;
-  --color-surface-2: #191d26;
-  --color-surface-3: #222734;
-  --color-line: #2a303d;
-  --color-line-strong: #3a4252;
-  --color-fg: #e8eaf0;
-  --color-muted: #9aa3b4;
-  --color-faint: #6b7385;
-  --color-accent: #7c9cff;
-  --color-accent-strong: #5b7cfa;
-  --color-accent-fg: #0b0d12;
-  --color-ok: #3ecf8e;
-  --color-warn: #f5b84b;
-  --color-bad: #f2676b;
-  --color-info: #5cc8ff;
+  --color-frame: #a9a76b;          /* page background around the card */
+  --color-frame-edge: #8f8d55;     /* the darker rim of the card */
+  --color-frame-ink: #2a3220;      /* text on the frame */
+  --color-bg: #29331f;             /* card base (deep matcha) */
+  --color-surface: #333e28;
+  --color-surface-2: #3b4730;
+  --color-surface-3: #475439;
+  --color-line: #4a5740;
+  --color-line-strong: #5d6a50;
+  --color-fg: #f2f0e3;
+  --color-muted: #c5c8af;
+  --color-faint: #929a7c;
+  --color-accent: #efede0;         /* cream: primary buttons, highlights */
+  --color-accent-strong: #ffffff;
+  --color-accent-fg: #26301d;      /* dark green text on cream */
+  --color-cream: #efede0;
+  --color-cream-ink: #2b3322;
+  --color-ink: #1f241a;            /* the dark "cart" button */
+  --color-ok: #a6d68f;
+  --color-warn: #ebc76f;
+  --color-bad: #f2907f;
+  --color-info: #b4d8e6;
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
 }
 
 :root {
@@ -27,21 +35,73 @@
 }
 
 body {
-  background: var(--color-bg);
+  background: var(--color-frame);
   color: var(--color-fg);
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--color-cream) 35%, transparent);
 }
 
 input[type="range"] {
-  accent-color: var(--color-accent);
+  accent-color: var(--color-cream);
+}
+
+/* Soft, rounded serif used for the logo and big headlines. */
+.font-display {
+  font-family: var(--font-display);
+  font-variation-settings: "SOFT" 100, "WONK" 0, "opsz" 144;
+  letter-spacing: -0.035em;
+}
+
+/* The deep-green card with a lit centre, like a studio backdrop. */
+.matcha-card {
+  background:
+    radial-gradient(120% 70% at 50% 18%, #56623f 0%, #3a4630 38%, #29331f 70%, #222a1a 100%);
+}
+
+/* Film grain so the gradient doesn't look flat (a layer behind the card's content). */
+.grain-layer {
+  opacity: 0.16;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Frosted pill for the top navigation. */
+.glass {
+  background: color-mix(in srgb, #8d9878 32%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0) rotate(var(--tilt)); }
+  50% { transform: translateY(-10px) rotate(var(--tilt)); }
+}
+
+.tile-float {
+  transform: rotate(var(--tilt));
+  animation: bob 6s ease-in-out infinite both;
+  /* Negative delay: each tile starts mid-bob, so none sits untilted before it begins. */
+  animation-delay: calc(-1 * var(--delay, 0s));
+}
+
+@keyframes word-in {
+  from { opacity: 0; transform: translateY(12px); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+.word-in {
+  animation: word-in 0.55s cubic-bezier(.2, .8, .2, 1) both;
 }
 
 @keyframes indeterminate {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(250%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-float, .word-in { animation: none; }
 }

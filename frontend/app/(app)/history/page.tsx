@@ -43,10 +43,10 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 pb-10 pt-8 sm:px-8 sm:pt-10">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">My files</h1>
+          <h1 className="font-display text-4xl text-cream sm:text-5xl">My files</h1>
           <p className="mt-1 text-sm text-muted">Files are deleted from the server after a while. This list stays in your browser.</p>
         </div>
         <Button variant="secondary" onClick={() => { setOffset(0); load(0); }} className="h-9 px-3">Refresh</Button>

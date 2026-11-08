@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useMe } from "@/components/AppShell";
 import { JobProgress } from "@/components/JobProgress";
-import { Alert, Badge, Button, Card, CopyButton, LinkButton, SectionTitle, cx, inputClass } from "@/components/ui";
+import { EXAMPLE_URL, Hero, useBrandCycle } from "@/components/Hero";
+import { IconArrow } from "@/components/Icons";
+import { Alert, Badge, Button, Card, CopyButton, LinkButton, SectionTitle, Spinner, cx } from "@/components/ui";
 import { api, errorMessage, fileUrl } from "@/lib/api";
 import { CAPTION_SOURCE_LABEL, PLATFORM_LABEL, formatBytes, formatDuration, timeUntil } from "@/lib/format";
 import type { AnalysisResult, DownloadResult, FormatOption, Job } from "@/lib/types";
@@ -64,44 +66,52 @@ export default function DashboardPage() {
   };
 
   const result = analysis.job?.status === "completed" ? analysis.job.result : null;
+  const [brand, pickBrand] = useBrandCycle(url.length > 0 || submitting);
+  const urlInput = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (result) resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [result]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Download a video</h1>
-        <p className="mt-1 text-sm text-muted">
-          Paste a public link from X, Instagram, Facebook, TikTok, YouTube or Reddit. Support varies by platform.
-        </p>
-      </div>
-
-      <Card>
-        <form onSubmit={analyze} className="flex flex-col gap-3 sm:flex-row">
-          <label htmlFor="url" className="sr-only">Video URL</label>
-          <div className="relative flex-1">
-            <input id="url" className={cx(inputClass, "pr-20")} type="url" inputMode="url" placeholder="https://…"
+    <>
+      <Hero brand={brand} headline="Save any video"
+            onPickBrand={(b) => { pickBrand(b); urlInput.current?.focus(); }}>
+        <form onSubmit={analyze}
+              className="w-full rounded-[1.75rem] bg-cream p-3 text-cream-ink shadow-[0_30px_60px_-25px_rgba(10,15,5,.8)] sm:p-4">
+          <label htmlFor="url" className="sr-only">Video link</label>
+          <div className="relative">
+            <input id="url" ref={urlInput} type="url" inputMode="url" placeholder={EXAMPLE_URL[brand]}
                    autoComplete="off" autoCapitalize="none" spellCheck={false} required value={url}
-                   onChange={(e) => setUrl(e.target.value)} />
+                   onChange={(e) => setUrl(e.target.value)}
+                   className="h-12 w-full rounded-2xl border border-cream-ink/15 bg-white/70 pl-4 pr-20 text-base text-cream-ink placeholder:text-cream-ink/40 focus:border-cream-ink/40 focus:outline-none focus:ring-2 focus:ring-cream-ink/15" />
             <button type="button" onClick={paste}
-                    className="absolute right-1.5 top-1.5 h-8 rounded-md px-3 text-xs text-muted hover:bg-surface-3 hover:text-fg">
+                    className="absolute right-1.5 top-1.5 h-9 rounded-xl px-3 text-xs font-semibold text-cream-ink/70 hover:bg-cream-ink/10 hover:text-cream-ink">
               Paste
             </button>
           </div>
-          <Button type="submit" loading={submitting} className="sm:w-44">Analyze Video</Button>
+          <button type="submit" disabled={submitting}
+                  className="mt-2.5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ink text-sm font-semibold text-cream shadow-[0_8px_20px_-8px_rgba(0,0,0,.6)] transition-colors hover:bg-black disabled:opacity-60">
+            {submitting ? <Spinner /> : null}
+            Analyze video
+            {!submitting && <IconArrow className="size-4" />}
+          </button>
+          {me && (
+            <p className="mt-2.5 text-center text-[11px] text-cream-ink/60">
+              Up to {minutes(me.limits.max_duration_seconds)} · {me.limits.max_filesize_mb} MB · files deleted after{" "}
+              {minutes(me.limits.retention_minutes * 60)}
+            </p>
+          )}
         </form>
-        {me && (
-          <p className="mt-3 text-xs text-faint">
-            Videos up to {minutes(me.limits.max_duration_seconds)} and {me.limits.max_filesize_mb} MB ·
-            files are deleted after {minutes(me.limits.retention_minutes * 60)}
-          </p>
-        )}
-        {formError && <div className="mt-3"><Alert>{formError}</Alert></div>}
+        {formError && <div className="mt-3 w-full"><Alert>{formError}</Alert></div>}
         {analysis.job && analysis.job.status !== "completed" && (
-          <div className="mt-4">
+          <div className="glass mt-3 w-full rounded-2xl p-3">
             <JobProgress job={analysis.job} pollError={analysis.error} onRetry={() => startAnalysis(url)} />
           </div>
         )}
-      </Card>
+      </Hero>
 
+      <div ref={resultsRef} className="mx-auto w-full max-w-5xl scroll-mt-6 space-y-6 px-4 pb-10 sm:px-8">
       {result && analysis.job && (
         <AnalysisView
           key={analysis.job.id}
@@ -114,7 +124,8 @@ export default function DashboardPage() {
       )}
 
       {!analysisId && <HowItWorks />}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -137,15 +148,15 @@ function HowItWorks() {
           ["2. Pick a quality", "See the caption, creator and length, then choose a resolution. Audio is always included."],
           ["3. Save the MP4", "Download it, copy the caption, or add your watermark and convert to 9:16 in Edit."],
         ].map(([t, d]) => (
-          <div key={t} className="rounded-2xl border border-line bg-surface p-4">
-            <p className="font-medium">{t}</p>
-            <p className="mt-1 text-sm text-muted">{d}</p>
+          <div key={t} className="rounded-3xl bg-cream p-5 text-cream-ink shadow-[0_20px_40px_-25px_rgba(0,0,0,.7)]">
+            <p className="font-display text-2xl">{t}</p>
+            <p className="mt-1 text-sm text-cream-ink/70">{d}</p>
           </div>
         ))}
       </div>
-      <section aria-labelledby="faq">
+      <section aria-labelledby="faq" id="faq" className="scroll-mt-6">
         <h2 id="faq" className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Questions</h2>
-        <div className="divide-y divide-line rounded-2xl border border-line bg-surface">
+        <div className="divide-y divide-cream/10 rounded-3xl border border-cream/10 bg-surface/75 backdrop-blur-sm">
           {faq.map(([q, a]) => (
             <details key={q} className="group px-4 py-3">
               <summary className="cursor-pointer list-none text-sm font-medium marker:hidden">
@@ -191,7 +202,7 @@ function AnalysisView({ analysisJob, result, onDownload, downloadJob, downloadPo
   const done = downloadJob?.status === "completed" ? downloadJob.result : null;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <Card className="space-y-4">
         <div className="overflow-hidden rounded-xl bg-surface-2">
           {done ? (

@@ -12,9 +12,9 @@ export function LegalPage({ title, updated, children }: {
 }) {
   const site = useSiteInfo();
   return (
-    <article className="space-y-5 text-sm leading-relaxed text-fg/90 [&_h2]:mt-8 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-fg [&_li]:ml-5 [&_li]:list-disc [&_a]:text-accent">
+    <article className="space-y-5 text-sm leading-relaxed text-fg/90 [&_h2]:mt-8 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-fg [&_li]:ml-5 [&_li]:list-disc [&_a]:text-cream [&_a]:underline [&_a]:underline-offset-2">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
+        <h1 className="font-display text-5xl text-cream">{title}</h1>
         <p className="mt-1 text-xs text-faint">Last updated {updated}</p>
       </header>
       {site ? children(site) : <Spinner className="size-5 text-muted" />}

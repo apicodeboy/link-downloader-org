@@ -90,9 +90,9 @@ export default function PublishPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 pb-10 pt-8 sm:px-8 sm:pt-10">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Prepare for publishing</h1>
+        <h1 className="font-display text-4xl text-cream sm:text-5xl">Prepare for publishing</h1>
         <p className="mt-1 text-sm text-muted">Create a post draft, approve it, then download the package or send it to a connected scheduler.</p>
       </div>
 

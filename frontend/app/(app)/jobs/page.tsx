@@ -65,9 +65,9 @@ export default function JobsPage() {
   const usedPct = status ? Math.round((status.storage.used_bytes / status.storage.quota_bytes) * 100) : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 pb-10 pt-8 sm:px-8 sm:pt-10">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
+        <h1 className="font-display text-4xl text-cream sm:text-5xl">Activity</h1>
         <p className="mt-1 text-sm text-muted">Your recent jobs and how busy the server is. Updates every few seconds.</p>
       </div>
 

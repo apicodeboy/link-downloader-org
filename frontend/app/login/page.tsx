@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { resetIdentity } from "@/components/AppShell";
+import { Frame, Wordmark } from "@/components/Frame";
+import { SITE_NAME } from "@/lib/site";
 import { Alert, Button, Field, inputClass } from "@/components/ui";
 import { api, errorMessage, setCsrfToken, setIdentityReady } from "@/lib/api";
 import type { Me } from "@/lib/types";
@@ -33,11 +35,12 @@ export default function LoginPage() {
   };
 
   return (
+    <Frame>
     <main className="flex flex-1 items-center justify-center px-4 py-12">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-2xl border border-line bg-surface p-6 sm:p-8">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-3xl border border-cream/10 bg-surface/80 p-6 backdrop-blur sm:p-8">
         <div>
-          <div aria-hidden className="mb-4 grid size-10 place-items-center rounded-xl bg-accent text-accent-fg">▼</div>
-          <h1 className="text-xl font-semibold">Sign in</h1>
+          <Wordmark name={SITE_NAME} />
+          <h1 className="font-display mt-6 text-4xl text-cream">Sign in</h1>
           <p className="mt-1 text-sm text-muted">Site owner sign-in. Visitors don&apos;t need an account.</p>
         </div>
         {error && <Alert>{error}</Alert>}
@@ -57,5 +60,6 @@ export default function LoginPage() {
         <Button type="submit" loading={loading} className="w-full">Sign in</Button>
       </form>
     </main>
+    </Frame>
   );
 }
