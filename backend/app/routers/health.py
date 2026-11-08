@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..deps import require_admin
+from ..deps import current_user, require_admin
 from ..media.ffmpeg import FFmpeg
 from ..media.storage import dir_size
 from ..media.ytdlp import ytdlp_version
@@ -31,6 +31,24 @@ def health(request: Request, db: Session = Depends(get_db)):
     checks["queue"] = bool(request.app.state.queue.ping())
     checks["ffmpeg"] = FFmpeg().available()
     return {"status": "ok" if all(checks.values()) else "degraded", "checks": checks}
+
+
+@router.get("/status")
+def status(request: Request, _user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Queue and capacity overview for any visitor. No versions, IPs or other users' data."""
+    s = get_settings()
+    running = db.scalar(select(func.count()).select_from(MediaJob).where(
+        MediaJob.status.in_((JobStatus.ANALYZING, JobStatus.DOWNLOADING, JobStatus.PROCESSING))))
+    used = dir_size(s.media_dir) + dir_size(s.work_dir)
+    return {
+        "queue": {"connected": request.app.state.queue.ping(), "depth": request.app.state.queue.depth()},
+        "running": running,
+        "storage_used_pct": round(100 * used / max(1, s.max_storage_mb * 1024 * 1024)),
+        "limits": {
+            "retention_minutes": s.retention_minutes, "max_filesize_mb": s.max_filesize_mb,
+            "max_duration_seconds": s.max_duration_seconds, "max_pending_jobs_per_user": s.max_pending_jobs_per_user,
+        },
+    }
 
 
 @router.get("/admin/status")

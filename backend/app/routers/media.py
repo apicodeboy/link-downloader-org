@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..audit import audit
@@ -27,7 +27,11 @@ router = APIRouter(prefix="/api/media", tags=["media"],
 
 
 def _check_pending(db: Session, user: User) -> None:
-    if find_active_jobs(db, user.id) >= get_settings().max_pending_jobs_per_user:
+    s = get_settings()
+    total = db.scalar(select(func.count()).select_from(MediaJob).where(MediaJob.status.in_(JobStatus.ACTIVE)))
+    if total >= s.max_active_jobs_total:
+        raise api_error(429, "server_busy", "The server is busy with other jobs. Try again in a few minutes.")
+    if find_active_jobs(db, user.id) >= s.max_pending_jobs_per_user:
         raise api_error(429, "too_many_jobs", "You already have the maximum number of jobs running. "
                                               "Wait for one to finish.")
 

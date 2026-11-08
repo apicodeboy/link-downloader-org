@@ -103,7 +103,7 @@ def update_job(job_id: int, body: PublishingJobUpdate, request: Request, user: U
 
 
 @router.post("/jobs/{job_id}/approve")
-def approve(job_id: int, request: Request, user: User = Depends(require_admin), _csrf=Depends(require_csrf),
+def approve(job_id: int, request: Request, user: User = Depends(current_user), _csrf=Depends(require_csrf),
             db: Session = Depends(get_db)):
     pj = _job(db, user, job_id)
     if pj.status != "draft":

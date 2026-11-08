@@ -2,7 +2,7 @@
 
 The app includes a publishing **preparation** system. You can pick a downloaded or
 processed video, edit its caption, add hashtags, choose destination accounts, and save a
-publishing job. An administrator then approves it. Nothing is ever posted automatically.
+publishing job. You then approve your own draft. Nothing is ever posted automatically.
 
 ## What works today
 
@@ -35,7 +35,7 @@ Source: [Basic guide for API integration](https://help.metricool.com/basic-guide
 
 ## Why automatic submission is switched off
 
-1. **Media hosting conflict.** This app keeps videos private behind your login and deletes
+1. **Media hosting conflict.** This app keeps each visitor's videos private to their browser and deletes
    them after 60 minutes. Metricool needs a public, permanent URL. Making videos public is
    a separate security decision you should make on purpose.
 2. **The video upload flow isn't verified.** The guide documents media normalization with

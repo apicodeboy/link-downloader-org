@@ -191,4 +191,5 @@ export interface Me {
   user: { id: number; username: string; role: string };
   csrf_token: string;
   expires_at: string;
+  mode: "open" | "login";
 }

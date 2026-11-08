@@ -9,6 +9,17 @@ export class ApiError extends Error {
 let csrfToken = "";
 let onUnauthorized: (() => void) | null = null;
 
+// Pages render before the visitor's identity is known. Requests (other than /api/auth/*)
+// wait here until the app shell has called /api/auth/me and stored the session.
+let markReady: () => void = () => {};
+const identityReady = new Promise<void>((resolve) => {
+  markReady = resolve;
+});
+
+export function setIdentityReady() {
+  markReady();
+}
+
 export function setCsrfToken(token: string) {
   csrfToken = token;
 }
@@ -20,6 +31,7 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
 type Options = { method?: string; body?: unknown; form?: FormData; signal?: AbortSignal };
 
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
+  if (!path.startsWith("/api/auth/")) await identityReady;
   const method = opts.method ?? (opts.body !== undefined || opts.form ? "POST" : "GET");
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;

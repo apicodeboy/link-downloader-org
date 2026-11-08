@@ -4,8 +4,9 @@
 Signs in, analyzes a URL, downloads the smallest offered resolution, checks the MP4,
 and prints a summary. Uses only the Python standard library.
 
+    python3 scripts/smoke_test.py https://videos.example.com               (open mode)
     VD_PASSWORD='...' python3 scripts/smoke_test.py https://videos.example.com admin \
-        'https://www.youtube.com/watch?v=YE7VzlLtp-4'
+        'https://www.youtube.com/watch?v=YE7VzlLtp-4'                        (login mode)
 
 Only use URLs you are authorized to download. The default sample is Blender
 Foundation's "Big Buck Bunny" (Creative Commons Attribution 3.0).
@@ -22,12 +23,12 @@ SAMPLE = "https://www.youtube.com/watch?v=YE7VzlLtp-4"
 
 
 def main() -> int:
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 2:
         print(__doc__)
         return 2
-    base, username = sys.argv[1].rstrip("/"), sys.argv[2]
+    base = sys.argv[1].rstrip("/")
+    username = sys.argv[2] if len(sys.argv) > 2 else None
     target = sys.argv[3] if len(sys.argv) > 3 else SAMPLE
-    password = os.environ.get("VD_PASSWORD") or __import__("getpass").getpass("Password: ")
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
     headers = {"Origin": base, "Content-Type": "application/json"}
@@ -56,12 +57,20 @@ def main() -> int:
 
     status, health = call("GET", "/api/health")
     print(f"health: {status} {health}")
-    status, me = call("POST", "/api/auth/login", {"username": username, "password": password})
-    if status != 200:
-        print("login failed:", me)
-        return 1
+    status, me = call("GET", "/api/auth/me")
+    if status == 200 and me.get("mode") == "open" and not username:
+        print(f"open mode: browsing as {me['user']['username']}")
+    else:
+        if not username:
+            print("This server requires sign-in: pass a username (and VD_PASSWORD).")
+            return 1
+        password = os.environ.get("VD_PASSWORD") or __import__("getpass").getpass("Password: ")
+        status, me = call("POST", "/api/auth/login", {"username": username, "password": password})
+        if status != 200:
+            print("login failed:", me)
+            return 1
+        print(f"signed in as {me['user']['username']}")
     headers["X-CSRF-Token"] = me["csrf_token"]
-    print(f"signed in as {me['user']['username']}")
 
     status, job = call("POST", "/api/media/analyze", {"url": target})
     if status != 202:

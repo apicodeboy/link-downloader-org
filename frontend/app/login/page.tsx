@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { resetIdentity } from "@/components/AppShell";
 import { Alert, Button, Field, inputClass } from "@/components/ui";
-import { api, errorMessage, setCsrfToken } from "@/lib/api";
+import { api, errorMessage, setCsrfToken, setIdentityReady } from "@/lib/api";
 import type { Me } from "@/lib/types";
 
 export default function LoginPage() {
@@ -20,6 +21,8 @@ export default function LoginPage() {
     try {
       const me = await api<Me>("/api/auth/login", { body: { username, password } });
       setCsrfToken(me.csrf_token);
+      setIdentityReady();
+      resetIdentity();
       const next = new URLSearchParams(window.location.search).get("next") || "/";
       router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/");
     } catch (err) {

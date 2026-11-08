@@ -94,7 +94,7 @@ After HTTPS works, turn on HSTS. Edit `/etc/nginx/sites-available/video-download
 remove the `#` before `add_header Strict-Transport-Security`, then run
 `sudo nginx -t && sudo systemctl reload nginx`.
 
-> Sign-in only works over HTTPS, because the session cookie is marked `Secure`.
+> The app only works over HTTPS, because each visitor's identity cookie is marked `Secure`.
 
 ## Step 4: First deploy
 
@@ -122,19 +122,42 @@ Every deploy does the same things:
 6. Restarts the services.
 7. Checks `/api/health`. **If the check fails, it switches back automatically.**
 
-## Step 5: Create your login
+## Step 5: Open it
+
+Open `https://videos.yourdomain.com`. Nobody needs to sign in: the app is open to anyone
+who has the address (`REQUIRE_LOGIN=false`).
+
+Optionally, create an admin account. Sign in at `https://videos.yourdomain.com/login`
+(not linked anywhere) to see server versions, storage, the audit trail and technical error
+details:
 
 ```bash
 sudo video-downloader-cli create-admin yourname     # asks for a password (12+ characters)
 ```
 
-Open `https://videos.yourdomain.com` and sign in.
+To make the whole site private instead, set `REQUIRE_LOGIN=true` in the env file and
+restart the API.
 
 To check the whole pipeline with a Creative Commons sample video:
 
 ```bash
-VD_PASSWORD='your-password' python3 ~/video-downloader/scripts/smoke_test.py https://videos.yourdomain.com yourname
+python3 ~/video-downloader/scripts/smoke_test.py https://videos.yourdomain.com
 ```
+
+### Open mode on a shared server
+
+Because anyone can use it, keep these in mind:
+
+* **Bandwidth and IP reputation.** Downloads come from your VPS's IP address. Heavy use by
+  strangers can get that IP rate-limited or blocked by the platforms, and that IP may be
+  shared with your other sites' outgoing traffic.
+* **Responsibility.** Your server fetches whatever visitors request from the supported
+  sites.
+* **Built-in protections.** Per-IP rate limits, 20 new browser identities per IP per
+  hour, 5 jobs per visitor, `MAX_ACTIVE_JOBS_TOTAL` across everyone, size and duration
+  limits, low CPU priority and a 60-minute file lifetime.
+* **Hiding it.** Use a hard-to-guess subdomain, or restrict by IP in the Nginx site with
+  `allow 1.2.3.4; deny all;`. Both work without turning sign-in back on.
 
 ## Day-to-day commands
 
@@ -194,7 +217,7 @@ if no other site uses them (Redis in particular).
 The site file answers only for your domain:
 
 * `/api/*` goes to FastAPI on `127.0.0.1:8010`. Responses are not buffered, so video
-  streams play smoothly. Login is limited to 10 per minute per IP.
+  streams play smoothly. Admin sign-in attempts are limited to 10 per minute per IP.
 * Everything else goes to the Next.js UI on `127.0.0.1:3010`.
 * `client_max_body_size 8m` fits watermark uploads.
 * The `limit_req_zone` names start with `vdl_` so they don't clash with your other sites.

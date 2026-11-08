@@ -17,7 +17,7 @@ PROTECTED = [
     ("post", "/api/media/abc/process"), ("get", "/api/jobs"), ("get", "/api/jobs/abc"),
     ("get", "/api/watermarks"), ("post", "/api/watermarks"), ("delete", "/api/watermarks/abc"),
     ("get", "/api/presets"), ("post", "/api/presets"), ("put", "/api/presets/1"), ("delete", "/api/presets/1"),
-    ("get", "/api/admin/status"), ("get", "/api/publishing/config"), ("post", "/api/publishing/check"),
+    ("get", "/api/admin/status"), ("get", "/api/status"), ("get", "/api/publishing/config"), ("post", "/api/publishing/check"),
     ("get", "/api/publishing/jobs"), ("post", "/api/publishing/jobs"), ("patch", "/api/publishing/jobs/1"),
     ("post", "/api/publishing/jobs/1/approve"), ("post", "/api/publishing/jobs/1/submit"),
     ("post", "/api/publishing/jobs/1/cancel"), ("get", "/api/publishing/jobs/1/package"),

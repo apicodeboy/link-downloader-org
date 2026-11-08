@@ -43,7 +43,7 @@
 6. `processing`. FFmpeg remuxes to MP4 (`+faststart`) or re-encodes if the codecs don't
    fit MP4. A `MediaFile` row records the path and `expires_at = now + RETENTION_MINUTES`.
 7. The UI polls `GET /api/jobs/{id}`, shows the preview, and links to
-   `GET /api/media/{id}/file`, which needs a login and supports seeking.
+   `GET /api/media/{id}/file`, which only serves the file to the identity that created it, and supports seeking.
 8. The cleanup timer deletes the file after the retention period. The history row stays.
 
 ## Database
@@ -52,7 +52,7 @@ SQLAlchemy 2 models in `backend/app/models.py` and Alembic migrations in `backen
 
 | Table | Purpose |
 | --- | --- |
-| `users` | administrators (scrypt password hashes, lockout counters) |
+| `users` | admin accounts (scrypt password hashes, lockout counters) and automatic per-browser guest identities |
 | `user_sessions` | server-side sessions (SHA-256 of the cookie token, CSRF token, expiry) |
 | `media_jobs` | every analyze, download and process job: status, progress, stage, options, result, error, timestamps |
 | `media_files` | files on disk: kind, relative path, size, codecs, `expires_at`, `deleted_at` |

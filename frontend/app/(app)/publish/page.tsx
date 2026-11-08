@@ -183,7 +183,7 @@ export default function PublishPage() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     <LinkButton href={fileUrl(j.media_file_id)} className="h-9 px-3">Preview</LinkButton>
                     <LinkButton href={`/api/publishing/jobs/${j.id}/package`} download className="h-9 px-3">Download package</LinkButton>
-                    {j.status === "draft" && me?.user.role === "admin" && (
+                    {j.status === "draft" && (
                       <Button className="h-9 px-3" onClick={() => act(j, "approve")}>Approve</Button>
                     )}
                     {j.status === "approved" && (

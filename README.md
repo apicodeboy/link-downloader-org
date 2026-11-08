@@ -1,6 +1,6 @@
 # Video Downloader
 
-A private, self-hosted web app for downloading **public videos you're authorized to use**
+A self-hosted web app for downloading **public videos you're authorized to use**
 from X/Twitter, Instagram, Facebook, TikTok, YouTube (incl. Shorts) and Reddit. It shows
 the original caption, saves the video as MP4, can add your watermark and convert to 9:16,
 and prepares posts for publishing.
@@ -9,6 +9,19 @@ and prepares posts for publishing.
 > without logging in. This app **does not** bypass logins, private accounts, paywalls,
 > age gates or DRM. It only works with content anyone can view publicly. Only download
 > content you own or have permission to use.
+
+## Who can use it
+
+**Anyone who can open the site.** There is no sign-in screen. Each browser automatically
+gets its own private history for 30 days, so visitors never see or delete each other's
+files. Abuse limits stay on: per-IP rate limits, size and duration limits, at most 5 jobs
+per visitor, at most 20 jobs across the whole server, and blocking of private network
+addresses.
+
+To make it private again, set `REQUIRE_LOGIN=true` in the settings file and create an
+account with `create-admin`. An administrator can always sign in at `/login`. That page
+isn't linked anywhere. Admins also see server versions, storage, the audit trail and
+technical error details.
 
 ## What you get
 
@@ -23,7 +36,7 @@ and prepares posts for publishing.
   convert to 9:16 with a blurred or black background, and generate 3 thumbnails. Audio is
   preserved and the original frame is never cropped. Settings can be saved as presets.
 * **Publish.** Pick a video, edit the prefilled caption, add hashtags, choose accounts and
-  approve. Then download a ready-to-upload package. Metricool support is prepared but off;
+  approve your own draft. Then download a ready-to-upload package. Metricool support is prepared but off;
   see [docs/METRICOOL.md](docs/METRICOOL.md).
 * **Jobs.** A live monitor with queue length, storage use and tool versions.
 * Dark mode, and works on a phone.
@@ -33,7 +46,7 @@ and prepares posts for publishing.
 | Part | What it does |
 | --- | --- |
 | **Frontend** (`frontend/`) | The website you click around in. Built with Next.js, TypeScript and Tailwind. |
-| **API** (`backend/`) | The FastAPI server. It checks logins, validates links, creates jobs and serves files. |
+| **API** (`backend/`) | The FastAPI server. It gives each browser its identity, validates links, creates jobs and serves files. |
 | **Worker** (`worker/`) | Does the slow work in the background (analyze, download, process), so the website never freezes. |
 | **Redis** | A small queue where the API leaves "job to do" notes for workers. |
 | **SQLite** | The database file: users, jobs, files, history, presets, publishing drafts, audit log. |
@@ -68,9 +81,9 @@ cp ../.env.example .env
 #      ALLOWED_ORIGINS=http://localhost:3010
 #      REDIS_URL=redis://127.0.0.1:6379/0
 
-# 4. Create the database and your login
+# 4. Create the database (and, optionally, an admin account for /login)
 .venv/bin/python -m app.cli init-db
-.venv/bin/python -m app.cli create-admin admin     # asks for a password
+.venv/bin/python -m app.cli create-admin admin     # optional; asks for a password
 
 # 5. Frontend packages
 cd ../frontend && npm install && cd ..
@@ -79,13 +92,13 @@ cd ../frontend && npm install && cd ..
 scripts/dev.sh
 ```
 
-Open **http://localhost:3010** and sign in. The API docs are at
+Open **http://localhost:3010**. No sign-in is needed. The API docs are at
 http://127.0.0.1:8010/api/docs.
 
 ### Run the tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q      # 159 tests; no internet needed
+cd backend && .venv/bin/python -m pytest -q      # 171 tests; no internet needed
 cd frontend && npm run typecheck && npm run build
 ```
 
@@ -94,7 +107,7 @@ download from real platforms. To try the real thing end to end, use the Creative
 sample (Blender's *Big Buck Bunny*):
 
 ```bash
-VD_PASSWORD='your-password' python3 scripts/smoke_test.py http://localhost:3010 admin
+python3 scripts/smoke_test.py http://localhost:3010
 ```
 
 ## Settings (environment variables)
@@ -105,6 +118,8 @@ Never commit either file. The ones you're most likely to change:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `REQUIRE_LOGIN` | `false` | `false` = open to everyone, no sign-in. `true` = accounts only |
+| `MAX_ACTIVE_JOBS_TOTAL` | `20` | Jobs queued or running across all visitors |
 | `ALLOWED_ORIGINS` | — | The exact address you open the app at, e.g. `https://videos.example.com` |
 | `RETENTION_MINUTES` | `60` | Minutes before downloaded and processed files are deleted |
 | `MAX_FILESIZE_MB` | `500` | Largest video accepted |
@@ -129,7 +144,7 @@ Full guide: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. In short:
    It never touches your other sites.
 3. Add a DNS A record, then `sudo certbot --nginx -d videos.yourdomain.com` for HTTPS.
 4. Push to GitHub (automatic deploy), or build and deploy by hand.
-5. `sudo video-downloader-cli create-admin yourname`.
+5. Optional: `sudo video-downloader-cli create-admin yourname` for the hidden `/login` admin view.
 
 Undo at any time with `sudo video-downloader-rollback` (previous version) or
 `sudo video-downloader-rollback --disable` (switch the app off).
@@ -190,7 +205,7 @@ uv pip compile requirements.in -o requirements.txt --upgrade-package yt-dlp --up
 uv pip compile requirements-dev.in -o requirements-dev.txt
 uv pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q                         # must pass
-VD_PASSWORD='…' python3 ../scripts/smoke_test.py http://localhost:3010 admin   # real check
+python3 ../scripts/smoke_test.py http://localhost:3010   # real check
 git commit -am "Update yt-dlp" && git push            # CI tests, then deploys
 ```
 

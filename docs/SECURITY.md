@@ -1,14 +1,17 @@
 # Security
 
-This is a private, single-administrator tool. The main risks are strangers using it,
-someone tricking the server into fetching internal addresses (SSRF), resource exhaustion
-on a shared VPS, and content that shouldn't be downloaded at all.
+By default the app is **open**: anyone with the address can use it without signing in
+(`REQUIRE_LOGIN=false`). The main risks are therefore strangers overusing the server, one
+visitor reaching another's files, someone tricking the server into fetching internal
+addresses (SSRF), and content that shouldn't be downloaded at all.
 
 ## Controls
 
 | Requirement | How it's done | Where |
 | --- | --- | --- |
-| Private admin authentication | Accounts are created only from the server command line. scrypt password hashes. No sign-up page. | `security/passwords.py`, `cli.py` |
+| Access mode | Open by default: each browser silently gets its own guest identity (a 30-day cookie). Guests only see and delete their own jobs and files. Guest creation is limited to 20 per IP per hour, and abandoned guests are purged. `REQUIRE_LOGIN=true` makes the site accounts-only. | `routers/auth.py`, `jobs/cleanup.py` |
+| Admin authentication | Admin accounts are created only from the server command line, with scrypt password hashes and no sign-up page. Admin-only views: server status, audit trail, technical error details, publishing connection test and submit. | `security/passwords.py`, `cli.py`, `deps.py` |
+| Server-wide capacity | `MAX_ACTIVE_JOBS_TOTAL` caps queued and running jobs across all visitors. | `routers/media.py` |
 | Secure sessions | Random 256-bit token in an `HttpOnly; Secure; SameSite=Strict` cookie. The database stores only its SHA-256. 12 h absolute and 2 h idle expiry. Logout and password reset revoke sessions. | `security/sessions.py` |
 | Brute-force protection | 5 failures lock the account for 15 minutes. Login is rate-limited in the app and in Nginx. Unknown usernames take the same time as known ones. | `routers/auth.py`, Nginx template |
 | CSRF | Every state-changing request needs the `X-CSRF-Token` header matching the session, and the `Origin` must be in `ALLOWED_ORIGINS`. | `deps.py` |

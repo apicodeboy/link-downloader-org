@@ -7,6 +7,13 @@ import { api, errorMessage } from "@/lib/api";
 import { formatBytes, isActive, timeAgo } from "@/lib/format";
 import type { Job } from "@/lib/types";
 
+interface PublicStatus {
+  queue: { connected: boolean; depth: number | null };
+  running: number;
+  storage_used_pct: number;
+  limits: Record<string, number>;
+}
+
 interface AdminStatus {
   versions: Record<string, string | null>;
   queue: { connected: boolean; depth: number | null };
@@ -27,6 +34,7 @@ export default function JobsPage() {
   const [filter, setFilter] = useState("");
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [status, setStatus] = useState<AdminStatus | null>(null);
+  const [pub, setPub] = useState<PublicStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
@@ -39,6 +47,7 @@ export default function JobsPage() {
       setError(errorMessage(e));
     }
     if (me?.user.role === "admin") api<AdminStatus>("/api/admin/status").then(setStatus).catch(() => {});
+    else api<PublicStatus>("/api/status").then(setPub).catch(() => {});
   }, [filter, me]);
 
   useEffect(() => {
@@ -63,6 +72,16 @@ export default function JobsPage() {
           <Stat label="Storage used" value={`${formatBytes(status.storage.used_bytes)} (${usedPct}%)`} bad={usedPct > 90} />
           <Stat label="Disk free" value={formatBytes(status.storage.disk_free_bytes)} />
         </div>
+      )}
+      {!status && pub && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Stat label="Queue" value={pub.queue.connected ? `${pub.queue.depth ?? 0} waiting` : "Offline"} bad={!pub.queue.connected} />
+          <Stat label="Running" value={String(pub.running)} />
+          <Stat label="Server storage" value={`${pub.storage_used_pct}% used`} bad={pub.storage_used_pct > 90} />
+        </div>
+      )}
+      {!status && pub && (
+        <p className="text-xs text-faint">Files are kept {pub.limits.retention_minutes} min · max {pub.limits.max_filesize_mb} MB per video</p>
       )}
       {status && (
         <p className="text-xs text-faint">

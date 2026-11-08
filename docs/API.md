@@ -6,10 +6,12 @@ Base path `/api`. All bodies are JSON unless noted. Errors look like this:
 { "detail": { "code": "unsupported_site", "message": "example.com is not a supported site. ..." } }
 ```
 
-**Authentication.** `POST /api/auth/login` sets an `HttpOnly` session cookie and returns a
-`csrf_token`. Every `POST`, `PUT`, `PATCH` and `DELETE` must also send `X-CSRF-Token:
-<token>`. Without a valid session, every endpoint except `/api/health` and
-`/api/auth/login` returns `401`.
+**Identity.** Call `GET /api/auth/me` first. In open mode (`REQUIRE_LOGIN=false`, the
+default) it creates a guest identity for a new browser, sets an `HttpOnly` cookie and
+returns a `csrf_token`. In login mode it returns `401` until `POST /api/auth/login`
+succeeds. Every `POST`, `PUT`, `PATCH` and `DELETE` must send `X-CSRF-Token: <token>`.
+Without a session cookie, every endpoint except `/api/health`, `/api/auth/me` and
+`/api/auth/login` returns `401`. Each identity sees only its own jobs and files.
 
 In development, interactive docs are at `http://127.0.0.1:8010/api/docs`. They are
 disabled in production.
@@ -20,13 +22,13 @@ disabled in production.
 | --- | --- | --- | --- |
 | POST | `/api/auth/login` | `{"username","password"}` | 200 `{user, csrf_token, expires_at}`. 401 wrong credentials. 429 locked or rate-limited. |
 | POST | `/api/auth/logout` | | Revokes the session. |
-| GET | `/api/auth/me` | | Current user and CSRF token. |
+| GET | `/api/auth/me` | | Current identity, CSRF token and `mode` (`open` or `login`). In open mode it creates a guest identity on first visit (429 after 20 per IP per hour). |
 
 ## Media
 
 | Method | Path | Body | Result |
 | --- | --- | --- | --- |
-| POST | `/api/media/analyze` | `{"url": "https://x.com/…"}` | 202 job (`kind: "analyze"`). 400 with a reason if the URL is rejected. 429 too many jobs. 503 queue down. |
+| POST | `/api/media/analyze` | `{"url": "https://x.com/…"}` | 202 job (`kind: "analyze"`). 400 with a reason if the URL is rejected. 429 `too_many_jobs` (per visitor) or `server_busy` (server-wide). 503 queue down. |
 | POST | `/api/media/download` | `{"analysis_job_id", "format_id"}` | 202 job (`kind: "download"`). `format_id` must be one the analysis returned, or `"best"`. 507 if storage is full. |
 | GET | `/api/jobs/{id}` | | Job status (see below). |
 | GET | `/api/jobs?status=active\|completed\|failed&limit=50` | | Recent jobs. |
@@ -90,7 +92,7 @@ A completed **download** job's `result` has `media_file_id`, `filename`, `size_b
 | POST | `/api/publishing/check` | Admin only. Read-only connection test. |
 | GET / POST | `/api/publishing/jobs` | Create: `{media_file_id, caption, hashtags[], destinations[], scheduled_at?}`. |
 | PATCH | `/api/publishing/jobs/{id}` | Edit. Removes any approval. |
-| POST | `/api/publishing/jobs/{id}/approve` | Admin only. Needs at least one destination. |
+| POST | `/api/publishing/jobs/{id}/approve` | The draft's owner. Needs at least one destination. |
 | POST | `/api/publishing/jobs/{id}/cancel` | |
 | POST | `/api/publishing/jobs/{id}/submit` | Admin only. Needs approval and `PUBLISHING_SUBMIT_ENABLED=true`. Returns 501 until a verified provider exists. |
 | GET | `/api/publishing/jobs/{id}/package` | ZIP containing the MP4 and `caption.txt`. |
@@ -100,4 +102,5 @@ A completed **download** job's `result` has `media_file_id`, `filename`, `size_b
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/health` | Public. `{"status":"ok"\|"degraded","checks":{"database","queue","ffmpeg"}}` |
+| GET | `/api/status` | Any visitor. Queue depth, running jobs, storage percentage, limits. |
 | GET | `/api/admin/status` | Admin only. Versions, queue depth, job counts, storage use, recent failures, recent audit events. |

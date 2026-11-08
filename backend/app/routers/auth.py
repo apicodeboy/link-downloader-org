@@ -1,6 +1,7 @@
 """Login, logout and current-session endpoints."""
 from __future__ import annotations
 
+import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -10,11 +11,11 @@ from sqlalchemy.orm import Session
 from ..audit import audit, client_ip
 from ..config import get_settings
 from ..db import get_db
-from ..deps import api_error, check_origin, get_session, rate_limited, require_csrf
+from ..deps import api_error, check_origin, rate_limited, require_csrf
 from ..models import User, UserSession, utcnow
 from ..schemas import LoginIn
 from ..security.passwords import DUMMY_HASH, verify_password
-from ..security.sessions import create_session, revoke_session
+from ..security.sessions import create_session, load_session, revoke_session, session_max_age
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -22,7 +23,16 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def _me(sess: UserSession) -> dict:
     u = sess.user
     return {"user": {"id": u.id, "username": u.username, "role": u.role}, "csrf_token": sess.csrf_token,
-            "expires_at": sess.expires_at.isoformat()}
+            "expires_at": sess.expires_at.isoformat(),
+            "mode": "login" if get_settings().require_login else "open"}
+
+
+def _set_cookie(response: Response, token: str, user: User) -> None:
+    s = get_settings()
+    response.set_cookie(
+        s.session_cookie_name, token, max_age=session_max_age(user), httponly=True,
+        secure=s.session_cookie_secure, samesite="strict", path="/",
+    )
 
 
 @router.post("/login", dependencies=[Depends(rate_limited("login", "login_rate_limit_per_minute"))])
@@ -54,10 +64,7 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     user.last_login_at = now
     db.commit()
     token, sess = create_session(db, user, client_ip(request), request.headers.get("user-agent"))
-    response.set_cookie(
-        s.session_cookie_name, token, max_age=s.session_ttl_hours * 3600, httponly=True,
-        secure=s.session_cookie_secure, samesite="strict", path="/",
-    )
+    _set_cookie(response, token, user)
     audit(db, request, "login", user_id=user.id)
     return _me(sess)
 
@@ -75,5 +82,23 @@ def logout(request: Request, response: Response, sess: UserSession = Depends(req
 
 
 @router.get("/me")
-def me(sess: UserSession = Depends(get_session)):
+def me(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Current identity. In open mode, a first-time visitor gets a guest identity here."""
+    s = get_settings()
+    sess = load_session(db, request.cookies.get(s.session_cookie_name))
+    if sess is not None:
+        return _me(sess)
+    if s.require_login:
+        raise api_error(401, "not_authenticated", "Please sign in.")
+    allowed, reset = request.app.state.rate_limiter.hit(
+        "guest", client_ip(request) or "unknown", s.guest_creations_per_ip_per_hour, window=3600)
+    if not allowed:
+        raise api_error(429, "rate_limited", f"Too many new visitors from your network. Try again in "
+                                             f"{max(1, reset // 60)} minutes.", headers={"Retry-After": str(reset)})
+    guest = User(username=f"guest-{secrets.token_hex(6)}", password_hash="!", role="guest")
+    db.add(guest)
+    db.commit()
+    token, sess = create_session(db, guest, client_ip(request), request.headers.get("user-agent"))
+    _set_cookie(response, token, guest)
+    audit(db, request, "guest_created", user_id=guest.id)
     return _me(sess)

@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     queue_name: str = "video-downloader"
     data_dir: Path = Path("./data")
 
+    # Access mode. false (default) = open: anyone can use the app without signing in; each
+    # browser gets its own private guest identity. true = only signed-in accounts.
+    require_login: bool = False
+    guest_session_days: int = 30
+    guest_creations_per_ip_per_hour: int = 20
+    # Server-wide cap on queued + running jobs (protects a shared VPS when the app is open).
+    max_active_jobs_total: int = 20
+
     # Sessions / auth
     session_cookie_name: str = "vd_session"
     session_cookie_secure: bool = True

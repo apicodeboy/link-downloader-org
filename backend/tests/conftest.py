@@ -37,6 +37,8 @@ def make_png(width: int = 120, height: int = 40, rgba=(255, 255, 255, 200)) -> b
 @pytest.fixture
 def settings(tmp_path, monkeypatch):
     monkeypatch.setenv("APP_ENV", "test")
+    # Most tests exercise the stricter login-required mode; test_open_mode.py covers open access.
+    monkeypatch.setenv("REQUIRE_LOGIN", "true")
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:1/0")
