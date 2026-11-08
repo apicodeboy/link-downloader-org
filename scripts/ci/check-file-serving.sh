@@ -28,7 +28,7 @@ with session_scope() as db:
     db.add(mf); db.flush(); print(mf.id)
 ")"
 echo "file id: $FILE_ID"
-ls -l /var/lib/video-downloader/media/ci-check/
+sudo ls -l /var/lib/video-downloader/media/ci-check/   # (unreadable to ordinary users, by design)
 
 URL="http://127.0.0.1/api/media/$FILE_ID/file"
 code="$(curl -sS -o /tmp/full.bin -w '%{http_code}' -H "Host: $HOST" -H "Cookie: vd_session=$A" "$URL?download=1")"
