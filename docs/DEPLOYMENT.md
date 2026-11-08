@@ -169,6 +169,34 @@ Because anyone can use it, keep these in mind:
 * **Hiding it.** Use a hard-to-guess subdomain, or restrict by IP in the Nginx site with
   `allow 1.2.3.4; deny all;`. Both work without turning sign-in back on.
 
+## Hostinger "Node.js web app" hosting (hPanel)
+
+Hostinger's Node.js web apps (Business and Cloud hosting) can build this repository's
+**web interface only**. They can't run the downloader itself: the Python API, Redis, the
+background workers, yt-dlp and FFmpeg need the VPS. A site deployed only there loads, but
+every download fails with "Can't reach the server". Use the VPS steps above for the real
+site.
+
+If you do build the interface there, use these settings (Deployments → Settings):
+
+| Setting | Value |
+| --- | --- |
+| Framework | Next.js |
+| Root directory | `frontend` |
+| Node.js version | 22 or 24 |
+| Build command | `build` (runs `next build --webpack`) |
+| Output directory | `.next` |
+
+Why webpack: Hostinger's build servers can't build Next.js 16.3.3 and newer with Turbopack,
+the default bundler, because those versions need a newer glibc than the servers have
+([Hostinger's article](https://www.hostinger.com/support/?p=21144)). The project's build
+script already uses webpack, and Tailwind is configured through PostCSS, which works with
+both bundlers. CI builds the interface on Node 22, Hostinger's default, to catch problems
+before Hostinger does.
+
+To see why a Hostinger build failed, open the failed build on the Deployments page. It
+shows the log and an AI-generated analysis.
+
 ## Day-to-day commands
 
 | Task | Command |

@@ -231,6 +231,7 @@ The error message tells you what happened. Common ones:
 | *job queue is unavailable* | Redis or the worker is down | `systemctl status redis-server 'video-downloader-worker@*'` |
 | Stuck on *Queued* | No worker running | `sudo systemctl restart 'video-downloader-worker@*'` |
 | YouTube shows few formats | No JavaScript runtime | Reinstall with `--with-deno`, or make sure Node is in the worker's PATH |
+| Hostinger "build failed" (Node.js web app) | Turbopack can't run on Hostinger's build servers | Already fixed: the build uses webpack. Set the root directory to `frontend`. Note that this hosting can't run the downloader; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#hostinger-nodejs-web-app-hosting-hpanel). |
 
 Administrators see **Technical details** under a failed job. That's yt-dlp's own log,
 which is useful for bug reports.

@@ -27,20 +27,25 @@ jobs:
         run: .venv/bin/python -m pytest -q
 
   frontend:
-    name: Frontend typecheck + build
+    name: Frontend typecheck + build (Node ${{ matrix.node }})
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # 22 is Hostinger's default Node.js version; 24 is what the VPS installer uses.
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - working-directory: frontend
         run: |
           npm ci --no-fund --no-audit
           npm run typecheck
-          npm run build
+          npm run build   # webpack: required for Next.js >= 16.3.3 on Hostinger's build servers
+          test -s .next/standalone/server.js
 
   shell:
     name: Shell scripts lint
