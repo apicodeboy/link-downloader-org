@@ -1,0 +1,16 @@
+[Unit]
+Description=Video Downloader retention cleanup (deletes expired media)
+
+[Service]
+Type=oneshot
+User=videodl
+Group=videodl
+WorkingDirectory=/opt/video-downloader/current/backend
+EnvironmentFile=/etc/video-downloader/video-downloader.env
+ExecStart=/opt/video-downloader/current/backend/.venv/bin/python -m app.cli cleanup
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/video-downloader
+Nice=15

@@ -1,0 +1,29 @@
+[Unit]
+Description=Video Downloader web UI (Next.js under a private PM2 runtime)
+After=network-online.target video-downloader-api.service
+
+[Service]
+Type=simple
+User=videodl
+Group=videodl
+WorkingDirectory=/opt/video-downloader/current/frontend
+EnvironmentFile=/etc/video-downloader/video-downloader.env
+# A private PM2 home: this PM2 instance never sees or touches other PM2 apps.
+Environment=PM2_HOME=/var/lib/video-downloader/.pm2
+Environment=PATH=/opt/video-downloader/shared/node/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+ExecStart=/opt/video-downloader/shared/pm2/node_modules/.bin/pm2-runtime start /opt/video-downloader/current/deploy/pm2/ecosystem.config.js
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/video-downloader
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

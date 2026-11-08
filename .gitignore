@@ -1,0 +1,36 @@
+# ---- secrets: never commit ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+cookies*.txt
+*.cookies
+
+# ---- local data ----
+backend/data/
+data/
+*.db
+*.db-wal
+*.db-shm
+dist/
+
+# ---- Python ----
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# ---- Node / Next.js ----
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+*.tsbuildinfo
+frontend/next-env.d.ts
+
+# ---- OS / editors ----
+.DS_Store
+.vscode/
+.idea/

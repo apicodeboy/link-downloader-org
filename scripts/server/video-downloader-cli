@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Run the app's admin commands as the 'videodl' user with the production settings.
+#   sudo video-downloader-cli create-admin <username>
+#   sudo video-downloader-cli reset-password <username>
+#   sudo video-downloader-cli cleanup
+#   sudo video-downloader-cli check
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+[ $# -ge 1 ] || { sed -n '2,6p' "$0"; exit 2; }
+case "$1" in create-admin|reset-password|cleanup|check|init-db) ;; *) echo "unknown command: $1" >&2; exit 2 ;; esac
+APP=/opt/video-downloader
+mode=--pipe; [ -t 0 ] && mode=--pty
+exec systemd-run --quiet --wait --collect "$mode" --uid=videodl --gid=videodl \
+  -p EnvironmentFile=/etc/video-downloader/video-downloader.env \
+  -p WorkingDirectory="$APP/current/backend" \
+  -E PATH="$APP/shared/bin:$APP/shared/node/bin:/usr/local/bin:/usr/bin:/bin" \
+  "$APP/current/backend/.venv/bin/python" -m app.cli "$@"

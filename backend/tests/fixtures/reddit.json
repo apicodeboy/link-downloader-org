@@ -1,0 +1,45 @@
+{
+ "id": "abc123",
+ "extractor": "Reddit",
+ "extractor_key": "Reddit",
+ "title": "My cat learned to open doors 😼 (sound on)",
+ "description": "",
+ "uploader": "u_cats",
+ "duration": 8,
+ "formats": [
+  {
+   "format_id": "dash-480",
+   "ext": "mp4",
+   "width": 854,
+   "height": 480,
+   "vcodec": "avc1",
+   "acodec": "none",
+   "tbr": 1200
+  },
+  {
+   "format_id": "dash-audio",
+   "ext": "m4a",
+   "vcodec": "none",
+   "acodec": "mp4a.40.2",
+   "abr": 128
+  },
+  {
+   "format_id": "hls-drm",
+   "ext": "mp4",
+   "width": 1920,
+   "height": 1080,
+   "vcodec": "avc1",
+   "acodec": "mp4a",
+   "has_drm": true
+  },
+  {
+   "format_id": "sb0",
+   "ext": "mhtml",
+   "protocol": "mhtml",
+   "width": 160,
+   "height": 90,
+   "vcodec": "none",
+   "acodec": "none"
+  }
+ ]
+}

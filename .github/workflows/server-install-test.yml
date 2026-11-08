@@ -1,0 +1,66 @@
+# Runs the real install, deploy and rollback scripts on a throwaway Ubuntu machine
+# (the GitHub runner), so changes to deployment are proven before they reach your VPS.
+name: Server install test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["scripts/**", "deploy/**", ".github/workflows/server-install-test.yml"]
+  push:
+    branches: [main]
+    paths: ["scripts/**", "deploy/**", ".github/workflows/server-install-test.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Simulate an existing server (Nginx + another site)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nginx
+          echo 'server { listen 80; server_name other-site.test; return 200 "other site"; }' | sudo tee /etc/nginx/sites-available/other.conf
+          sudo ln -s /etc/nginx/sites-available/other.conf /etc/nginx/sites-enabled/other.conf
+          sudo nginx -t && sudo systemctl reload nginx
+      - name: Inspect (read-only)
+        run: sudo bash scripts/server-inspect.sh
+      - name: Install
+        run: sudo bash scripts/install-server.sh --domain videos.example.test --workers 1 --yes
+      - name: Build two releases
+        run: |
+          scripts/build-release.sh r1
+          sudo cp dist/video-downloader-r1.tar.gz /home/videodl-deploy/incoming/
+          sed -i 's/Download a video/Download a video!/' 'frontend/app/(app)/page.tsx'
+          scripts/build-release.sh r2
+          sudo cp dist/video-downloader-r2.tar.gz /home/videodl-deploy/incoming/
+      - name: Deploy r1 as the deploy user (exercises the sudoers rule)
+        run: sudo -u videodl-deploy sudo -n /usr/local/sbin/video-downloader-deploy /home/videodl-deploy/incoming/video-downloader-r1.tar.gz
+      - name: Create admin and smoke test through Nginx
+        run: |
+          printf 'Ci-Test-Password-123\n' | sudo video-downloader-cli create-admin ci --password-stdin
+          sudo video-downloader-cli check
+          curl -fsS -H 'Host: videos.example.test' http://127.0.0.1/api/health
+          curl -fsS -o /dev/null -H 'Host: videos.example.test' http://127.0.0.1/login
+          test "$(curl -fsS -H 'Host: other-site.test' http://127.0.0.1/)" = "other site"
+      - name: Deploy r2, then roll back to r1
+        run: |
+          sudo -u videodl-deploy sudo -n /usr/local/sbin/video-downloader-deploy /home/videodl-deploy/incoming/video-downloader-r2.tar.gz
+          sudo video-downloader-rollback --list
+          sudo video-downloader-rollback
+          readlink /opt/video-downloader/current | grep -q -- '-r1$'
+      - name: Disable completely; other site still works
+        run: |
+          sudo video-downloader-rollback --disable
+          test "$(curl -fsS -H 'Host: other-site.test' http://127.0.0.1/)" = "other site"
+          ! systemctl is-active --quiet video-downloader-api
+      - name: Logs on failure
+        if: failure()
+        run: |
+          sudo journalctl -u 'video-downloader-*' -n 200 --no-pager || true
+          sudo nginx -T | tail -60 || true

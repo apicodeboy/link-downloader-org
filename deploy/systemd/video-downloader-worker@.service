@@ -1,0 +1,41 @@
+[Unit]
+Description=Video Downloader background worker %i
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=videodl
+Group=videodl
+WorkingDirectory=/opt/video-downloader/current/backend
+EnvironmentFile=/etc/video-downloader/video-downloader.env
+Environment=WORKER_INSTANCE=%i WORKER_CLASS=fork
+Environment=PATH=/opt/video-downloader/shared/bin:/opt/video-downloader/shared/node/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/video-downloader/current/backend/.venv/bin/python /opt/video-downloader/current/worker/run_worker.py
+Restart=always
+RestartSec=5
+# Let a running download finish its current step before stopping.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/video-downloader
+UMask=0027
+# Be a good neighbour to the other websites on this server.
+Nice=10
+CPUWeight=40
+IOWeight=40
+MemoryMax=1536M
+
+[Install]
+WantedBy=multi-user.target

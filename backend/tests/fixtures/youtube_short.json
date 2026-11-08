@@ -1,0 +1,57 @@
+{
+ "id": "abcdefghijk",
+ "extractor": "youtube",
+ "extractor_key": "Youtube",
+ "title": "How to fold a fitted sheet in 30 seconds",
+ "description": "Full tutorial on my channel!\nMusic: Sunny Day\n#lifehack #laundry",
+ "channel": "Home Tips",
+ "channel_id": "UC123",
+ "channel_url": "https://www.youtube.com/channel/UC123",
+ "uploader": "Home Tips",
+ "uploader_id": "@hometips",
+ "tags": [
+  "laundry",
+  "lifehack"
+ ],
+ "duration": 31,
+ "formats": [
+  {
+   "format_id": "137",
+   "ext": "mp4",
+   "width": 1080,
+   "height": 1920,
+   "vcodec": "avc1.640028",
+   "acodec": "none",
+   "fps": 30,
+   "tbr": 2500,
+   "filesize": 8000000
+  },
+  {
+   "format_id": "248",
+   "ext": "webm",
+   "width": 1080,
+   "height": 1920,
+   "vcodec": "vp9",
+   "acodec": "none",
+   "fps": 30,
+   "tbr": 2800
+  },
+  {
+   "format_id": "140",
+   "ext": "m4a",
+   "vcodec": "none",
+   "acodec": "mp4a.40.2",
+   "abr": 129,
+   "filesize": 500000
+  },
+  {
+   "format_id": "18",
+   "ext": "mp4",
+   "width": 360,
+   "height": 640,
+   "vcodec": "avc1.42001E",
+   "acodec": "mp4a.40.2",
+   "tbr": 500
+  }
+ ]
+}

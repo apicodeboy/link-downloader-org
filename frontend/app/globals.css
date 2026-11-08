@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* Dark-only dashboard palette. Components use these tokens, never raw hex. */
+@theme {
+  --color-bg: #0b0d12;
+  --color-surface: #12151c;
+  --color-surface-2: #191d26;
+  --color-surface-3: #222734;
+  --color-line: #2a303d;
+  --color-line-strong: #3a4252;
+  --color-fg: #e8eaf0;
+  --color-muted: #9aa3b4;
+  --color-faint: #6b7385;
+  --color-accent: #7c9cff;
+  --color-accent-strong: #5b7cfa;
+  --color-accent-fg: #0b0d12;
+  --color-ok: #3ecf8e;
+  --color-warn: #f5b84b;
+  --color-bad: #f2676b;
+  --color-info: #5cc8ff;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+input[type="range"] {
+  accent-color: var(--color-accent);
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}

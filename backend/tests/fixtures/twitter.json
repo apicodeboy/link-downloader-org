@@ -1,0 +1,64 @@
+{
+ "id": "1790000000000000000",
+ "extractor": "twitter",
+ "extractor_key": "Twitter",
+ "title": "Jane Doe - Sunrise over the bay 🌅 #sunrise",
+ "description": "Sunrise over the bay 🌅\n\nShot on my phone — no filters! 👩‍👩‍👧 #sunrise #Café #日本 https://t.co/abc",
+ "uploader": "Jane Doe",
+ "uploader_id": "janedoe",
+ "uploader_url": "https://twitter.com/janedoe",
+ "duration": 12.5,
+ "webpage_url": "https://x.com/janedoe/status/1790000000000000000",
+ "formats": [
+  {
+   "format_id": "hls-256",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "width": 480,
+   "height": 270,
+   "vcodec": "avc1.4D401E",
+   "acodec": "none",
+   "tbr": 256
+  },
+  {
+   "format_id": "hls-audio-128000-Audio",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "vcodec": "none",
+   "acodec": "mp4a.40.2",
+   "abr": 128
+  },
+  {
+   "format_id": "http-832",
+   "protocol": "https",
+   "ext": "mp4",
+   "width": 640,
+   "height": 360,
+   "vcodec": null,
+   "acodec": null,
+   "tbr": 832,
+   "filesize": 1200000
+  },
+  {
+   "format_id": "http-2176",
+   "protocol": "https",
+   "ext": "mp4",
+   "width": 1280,
+   "height": 720,
+   "vcodec": null,
+   "acodec": null,
+   "tbr": 2176,
+   "filesize_approx": 3400000
+  },
+  {
+   "format_id": "hls-2176",
+   "protocol": "m3u8_native",
+   "ext": "mp4",
+   "width": 1280,
+   "height": 720,
+   "vcodec": "avc1.640020",
+   "acodec": "none",
+   "tbr": 2176
+  }
+ ]
+}

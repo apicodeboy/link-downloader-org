@@ -1,0 +1,69 @@
+# Video Downloader — Nginx site. Installed as /etc/nginx/sites-available/video-downloader.conf
+# by scripts/install-server.sh. It only answers for __DOMAIN__; other sites are untouched.
+# Certbot (`certbot --nginx -d __DOMAIN__`) adds the HTTPS listener and redirect to this file.
+
+limit_req_zone $binary_remote_addr zone=vdl_login:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=vdl_api:10m rate=20r/s;
+
+upstream vdl_api {
+    server 127.0.0.1:__API_PORT__;
+    keepalive 16;
+}
+
+upstream vdl_web {
+    server 127.0.0.1:__WEB_PORT__;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__;
+
+    # Watermark PNG uploads are the largest request bodies (limit 5 MB in the app).
+    client_max_body_size 8m;
+    server_tokens off;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "same-origin" always;
+    # Uncomment after HTTPS works (Step 7 in docs/DEPLOYMENT.md):
+    # add_header Strict-Transport-Security "max-age=31536000" always;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    # Overwrite (not append) so clients can't spoof their IP for rate limiting.
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+
+    location = /api/auth/login {
+        limit_req zone=vdl_login burst=5 nodelay;
+        limit_req_status 429;
+        proxy_pass http://vdl_api;
+    }
+
+    location /api/ {
+        limit_req zone=vdl_api burst=40 nodelay;
+        limit_req_status 429;
+        proxy_pass http://vdl_api;
+        proxy_read_timeout 300s;
+        # Stream video files instead of buffering them to disk.
+        proxy_buffering off;
+        proxy_request_buffering on;
+    }
+
+    # Optional faster file delivery: set USE_X_ACCEL_REDIRECT=true in the env file and
+    # give the nginx user read access to __DATA_DIR__/media (see docs/DEPLOYMENT.md).
+    location /_protected_media/ {
+        internal;
+        alias __DATA_DIR__/media/;
+    }
+
+    location / {
+        proxy_pass http://vdl_web;
+        proxy_read_timeout 60s;
+    }
+}

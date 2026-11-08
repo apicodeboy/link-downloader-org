@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Roll back or switch off Video Downloader. Never deletes data or other sites.
+#
+#   sudo video-downloader-rollback                 switch to the previous release
+#   sudo video-downloader-rollback --list          show releases
+#   sudo video-downloader-rollback <release-id>    switch to a specific release
+#   sudo video-downloader-rollback --restore-db <backup.db>   restore a database backup
+#   sudo video-downloader-rollback --disable       stop the app and remove its Nginx site from
+#                                                  service (files and data are kept)
+#   sudo video-downloader-rollback --enable        undo --disable
+# =============================================================================
+set -euo pipefail
+APP=/opt/video-downloader
+DATA=/var/lib/video-downloader
+ENVF=/etc/video-downloader/video-downloader.env
+die() { echo "ERROR: $*" >&2; exit 1; }
+say() { echo "==> $*"; }
+[ "$(id -u)" -eq 0 ] || die "run with sudo"
+
+workers() {
+  local n
+  n="$(grep -E '^VD_WORKERS=' "$ENVF" 2>/dev/null | tail -1 | cut -d= -f2-)"
+  for i in $(seq 1 "${n:-1}"); do echo "video-downloader-worker@$i.service"; done
+}
+units() { echo video-downloader-api.service video-downloader-web.service video-downloader-cleanup.timer; workers; }
+restart_all() {
+  systemctl restart video-downloader-api.service video-downloader-web.service
+  for u in $(workers); do systemctl restart "$u"; done
+}
+nginx_site() {
+  if [ -e /etc/nginx/sites-available/video-downloader.conf ]; then echo /etc/nginx/sites-enabled/video-downloader.conf
+  else echo /etc/nginx/conf.d/video-downloader.conf; fi
+}
+
+CUR="$(readlink -f "$APP/current" 2>/dev/null || true)"
+case "${1:-}" in
+  --list)
+    for r in $(ls -1d "$APP"/releases/*/ 2>/dev/null | sed 's:/$::' | sort -r); do
+      [ "$r" = "$CUR" ] && echo "* $(basename "$r")  (current)" || echo "  $(basename "$r")"
+    done ;;
+  --disable)
+    say "Stopping and disabling Video Downloader services"
+    for u in $(units); do systemctl disable --now "$u" 2>/dev/null || true; done
+    site="$(nginx_site)"
+    if [ -L "$site" ]; then rm -f -- "$site"
+    elif [ -f "$site" ]; then mv -- "$site" "$site.disabled"; fi
+    if command -v nginx >/dev/null && nginx -t 2>/dev/null; then systemctl reload nginx; fi
+    say "Disabled. Code ($APP), data ($DATA) and settings ($ENVF) were kept."
+    echo "To remove completely, see 'Uninstall' in docs/DEPLOYMENT.md." ;;
+  --enable)
+    if [ -e /etc/nginx/sites-available/video-downloader.conf ]; then
+      ln -sfn /etc/nginx/sites-available/video-downloader.conf /etc/nginx/sites-enabled/video-downloader.conf
+    elif [ -f /etc/nginx/conf.d/video-downloader.conf.disabled ]; then
+      mv -- /etc/nginx/conf.d/video-downloader.conf.disabled /etc/nginx/conf.d/video-downloader.conf
+    fi
+    nginx -t && systemctl reload nginx
+    systemctl enable --now video-downloader-api.service video-downloader-web.service video-downloader-cleanup.timer
+    for u in $(workers); do systemctl enable --now "$u"; done
+    say "Enabled." ;;
+  --restore-db)
+    BK="$(readlink -f "${2:-}")"
+    case "$BK" in "$DATA"/backups/app-*.db) ;; *) die "pick a file from $DATA/backups/" ;; esac
+    [ -f "$BK" ] || die "not found: $BK"
+    DB_URL="$(grep -E '^DATABASE_URL=' "$ENVF" | tail -1 | cut -d= -f2-)"
+    [[ "$DB_URL" == sqlite:///* ]] || die "automatic restore supports SQLite only"
+    DB_FILE="/${DB_URL#sqlite:///}"; DB_FILE="/${DB_FILE#/}"
+    read -r -p "Replace $DB_FILE with $BK? Current DB is saved first. [y/N] " a; [[ "$a" =~ ^[Yy]$ ]] || exit 0
+    systemctl stop video-downloader-api.service
+    for u in $(workers); do systemctl stop "$u"; done
+    cp -p -- "$DB_FILE" "$DATA/backups/app-before-restore-$(date +%Y%m%d-%H%M%S).db"
+    install -m 0640 -o videodl -g videodl -- "$BK" "$DB_FILE"
+    rm -f -- "$DB_FILE-wal" "$DB_FILE-shm"
+    restart_all
+    say "Database restored from $BK" ;;
+  -h|--help) sed -n '2,13p' "$0" ;;
+  *)
+    if [ -n "${1:-}" ]; then
+      TARGET="$APP/releases/$1"
+      [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] && [ -d "$TARGET" ] || die "no such release: $1 (use --list)"
+    else
+      TARGET="$(ls -1d "$APP"/releases/*/ 2>/dev/null | sed 's:/$::' | sort -r | grep -vxF "$CUR" | head -1 || true)"
+      [ -n "$TARGET" ] || die "no previous release to roll back to"
+    fi
+    say "Switching from $(basename "${CUR:-none}") to $(basename "$TARGET")"
+    ln -sfn "$TARGET" "$APP/current.new" && mv -Tf "$APP/current.new" "$APP/current"
+    restart_all
+    API_PORT="$(grep -E '^VD_API_PORT=' "$ENVF" | cut -d= -f2-)"
+    sleep 3
+    curl -fsS "http://127.0.0.1:$API_PORT/api/health" && echo && say "Rollback complete" \
+      || echo "API not healthy yet; check: journalctl -u video-downloader-api -n 50"
+    echo "Note: database migrations are not reversed. If the newer release changed the schema,"
+    echo "restore the backup taken before it with --restore-db." ;;
+esac

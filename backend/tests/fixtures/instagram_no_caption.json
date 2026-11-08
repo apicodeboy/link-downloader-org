@@ -1,0 +1,39 @@
+{
+ "id": "C1abc",
+ "extractor": "Instagram",
+ "extractor_key": "Instagram",
+ "title": "Video by someuser",
+ "description": null,
+ "uploader": "Some User",
+ "uploader_id": "someuser",
+ "duration": 30.0,
+ "formats": [
+  {
+   "format_id": "1080p-dash",
+   "ext": "mp4",
+   "width": 1080,
+   "height": 1920,
+   "vcodec": "avc1.64002a",
+   "acodec": "none",
+   "tbr": 3000,
+   "filesize": 9000000
+  },
+  {
+   "format_id": "audio-dash",
+   "ext": "m4a",
+   "vcodec": "none",
+   "acodec": "mp4a.40.2",
+   "abr": 96,
+   "filesize": 300000
+  },
+  {
+   "format_id": "8",
+   "ext": "mp4",
+   "width": 720,
+   "height": 1280,
+   "vcodec": "avc1",
+   "acodec": "mp4a",
+   "tbr": 1500
+  }
+ ]
+}

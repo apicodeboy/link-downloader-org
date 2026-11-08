@@ -1,0 +1,74 @@
+# Deploys main to your VPS after CI passes. Does nothing until the secrets below exist.
+#
+# Repository secrets (Settings -> Secrets and variables -> Actions):
+#   VPS_HOST         server IP or hostname
+#   VPS_PORT         SSH port (optional, default 22)
+#   VPS_SSH_KEY      PRIVATE key whose public half is in /home/videodl-deploy/.ssh/authorized_keys
+#   VPS_KNOWN_HOSTS  output of: ssh-keyscan -p <port> <host>   (pins the server's identity)
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Check deploy secrets
+        id: check
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ] || [ -z "$KNOWN" ]; then
+            echo "::notice::Deploy skipped: set VPS_HOST, VPS_SSH_KEY and VPS_KNOWN_HOSTS secrets to enable it."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build release
+        if: steps.check.outputs.ready == 'true'
+        run: scripts/build-release.sh "$(git rev-parse --short HEAD)"
+      - name: Upload and activate
+        if: steps.check.outputs.ready == 'true'
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          FILE="video-downloader-$(git rev-parse --short HEAD).tar.gz"
+          SSH="ssh -i ~/.ssh/deploy_key -p $PORT -o StrictHostKeyChecking=yes -o BatchMode=yes"
+          scp -i ~/.ssh/deploy_key -P "$PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "dist/$FILE" "videodl-deploy@$HOST:incoming/$FILE"
+          $SSH "videodl-deploy@$HOST" "sudo -n /usr/local/sbin/video-downloader-deploy /home/videodl-deploy/incoming/$FILE"
+      - name: Remove key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

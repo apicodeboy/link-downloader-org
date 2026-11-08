@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Activate a release tarball built by scripts/build-release.sh.
+#   sudo video-downloader-deploy /home/videodl-deploy/incoming/video-downloader-<version>.tar.gz
+#
+# Steps: unpack into a NEW folder -> build its Python environment -> back up the
+# database -> run migrations -> switch the `current` link -> restart -> health check.
+# If the health check fails it switches back to the previous release automatically.
+# Old releases beyond the newest 5 are pruned. Data in /var/lib/video-downloader is
+# never touched except for the database backup.
+# =============================================================================
+set -euo pipefail
+APP=/opt/video-downloader
+DATA=/var/lib/video-downloader
+ENVF=/etc/video-downloader/video-downloader.env
+KEEP=5
+export UV_PYTHON_INSTALL_DIR="$APP/shared/python" UV_CACHE_DIR=/var/cache/video-downloader/uv
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+say() { echo "==> $*"; }
+envget() { grep -E "^$1=" "$ENVF" | tail -1 | cut -d= -f2- | tr -d '"'"'"; }
+
+[ "$(id -u)" -eq 0 ] || die "run with sudo"
+[ $# -eq 1 ] || die "usage: video-downloader-deploy <release.tar.gz>"
+TARBALL="$(readlink -f "$1")"
+NAME="$(basename "$TARBALL")"
+[[ "$NAME" =~ ^video-downloader-[A-Za-z0-9._-]{1,64}\.tar\.gz$ ]] || die "unexpected file name: $NAME"
+case "$TARBALL" in
+  /home/videodl-deploy/incoming/*|/root/*|/tmp/*) ;;
+  *) die "tarball must be in /home/videodl-deploy/incoming/" ;;
+esac
+[ -f "$TARBALL" ] || die "not found: $TARBALL"
+[ -f "$ENVF" ] || die "missing $ENVF — run install-server.sh first"
+API_PORT="$(envget VD_API_PORT)"; WEB_PORT="$(envget VD_WEB_PORT)"
+[ -n "$API_PORT" ] && [ -n "$WEB_PORT" ] || die "VD_API_PORT/VD_WEB_PORT missing in $ENVF"
+
+# Refuse archives containing absolute paths or ".." components.
+if tar -tzf "$TARBALL" | grep -qE '(^/|(^|/)\.\.(/|$))'; then die "archive contains unsafe paths"; fi
+
+VERSION="${NAME#video-downloader-}"; VERSION="${VERSION%.tar.gz}"
+REL_ID="$(date +%Y%m%d-%H%M%S)-$VERSION"
+DEST="$APP/releases/$REL_ID"
+PREV="$(readlink -f "$APP/current" 2>/dev/null || true)"
+
+say "Unpacking $NAME -> $DEST"
+install -d -m 0755 "$DEST"
+tar -xzf "$TARBALL" -C "$DEST" --no-same-owner --no-same-permissions
+[ -f "$DEST/backend/app/main.py" ] && [ -f "$DEST/frontend/server.js" ] || die "release is missing backend or frontend"
+
+say "Building Python environment"
+"$APP/shared/bin/uv" venv --quiet --python 3.12 "$DEST/backend/.venv"
+"$APP/shared/bin/uv" pip install --quiet --python "$DEST/backend/.venv/bin/python" -r "$DEST/backend/requirements.txt"
+chown -R root:videodl "$DEST"
+chmod -R u=rwX,g=rX,o= "$DEST"
+chmod 0755 "$DEST"
+
+DB_URL="$(envget DATABASE_URL)"
+if [[ "$DB_URL" == sqlite:///* ]]; then
+  DB_FILE="/${DB_URL#sqlite:///}"; DB_FILE="${DB_FILE#//}"; DB_FILE="/${DB_FILE#/}"
+  if [ -f "$DB_FILE" ]; then
+    BK="$DATA/backups/app-$(date +%Y%m%d-%H%M%S).db"
+    say "Backing up database to $BK"
+    sqlite3 "$DB_FILE" ".backup '$BK'"
+    chown videodl:videodl "$BK"; chmod 0640 "$BK"
+    ls -1t "$DATA"/backups/app-*.db 2>/dev/null | tail -n +11 | xargs -r rm -f --
+  fi
+fi
+
+run_as_app() {  # run a command as videodl with the production environment
+  systemd-run --quiet --wait --pipe --collect --uid=videodl --gid=videodl \
+    -p EnvironmentFile="$ENVF" -p WorkingDirectory="$DEST/backend" "$@"
+}
+say "Running database migrations"
+run_as_app "$DEST/backend/.venv/bin/python" -m app.cli init-db
+
+switch_to() {
+  ln -sfn "$1" "$APP/current.new"
+  mv -Tf "$APP/current.new" "$APP/current"
+}
+restart_all() {
+  local n
+  n="$(envget VD_WORKERS)"; n="${n:-1}"
+  systemctl daemon-reload
+  systemctl restart video-downloader-api.service video-downloader-web.service
+  for i in $(seq 1 "$n"); do systemctl restart "video-downloader-worker@$i.service"; done
+  systemctl start video-downloader-cleanup.timer
+}
+healthy() {
+  for _ in $(seq 1 30); do
+    if curl -fsS "http://127.0.0.1:$API_PORT/api/health" 2>/dev/null | grep -q '"database":true' \
+       && curl -fsS -o /dev/null "http://127.0.0.1:$WEB_PORT/login" 2>/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+say "Switching to new release"
+switch_to "$DEST"
+restart_all
+if healthy; then
+  say "Health check passed"
+  curl -fsS "http://127.0.0.1:$API_PORT/api/health"; echo
+else
+  echo "Health check FAILED. Recent API log:"; journalctl -u video-downloader-api -n 30 --no-pager || true
+  if [ -n "$PREV" ] && [ -d "$PREV" ]; then
+    say "Rolling back to $(basename "$PREV")"
+    switch_to "$PREV"; restart_all
+  fi
+  die "deploy of $REL_ID failed and was rolled back"
+fi
+
+say "Pruning old releases (keeping $KEEP)"
+CUR="$(readlink -f "$APP/current")"
+ls -1d "$APP"/releases/*/ 2>/dev/null | sed 's:/$::' | sort -r | tail -n +$((KEEP + 1)) | while read -r old; do
+  [ "$old" = "$CUR" ] || [ "$old" = "$PREV" ] || { case "$old" in "$APP"/releases/?*) rm -rf -- "$old" ;; esac; }
+done
+rm -f -- "$TARBALL"
+say "Deployed $REL_ID"
