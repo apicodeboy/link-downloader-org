@@ -11,6 +11,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -19,7 +20,7 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const me = await api<Me>("/api/auth/login", { body: { username, password } });
+      const me = await api<Me>("/api/auth/login", { body: { username, password, remember } });
       setCsrfToken(me.csrf_token);
       setIdentityReady();
       resetIdentity();
@@ -37,7 +38,7 @@ export default function LoginPage() {
         <div>
           <div aria-hidden className="mb-4 grid size-10 place-items-center rounded-xl bg-accent text-accent-fg">▼</div>
           <h1 className="text-xl font-semibold">Sign in</h1>
-          <p className="mt-1 text-sm text-muted">Private video dashboard. Administrators only.</p>
+          <p className="mt-1 text-sm text-muted">Site owner sign-in. Visitors don&apos;t need an account.</p>
         </div>
         {error && <Alert>{error}</Alert>}
         <Field label="Username">
@@ -48,6 +49,11 @@ export default function LoginPage() {
           <input className={inputClass} type="password" autoComplete="current-password" required value={password}
                  onChange={(e) => setPassword(e.target.value)} />
         </Field>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" className="size-4 accent-[var(--color-accent)]" checked={remember}
+                 onChange={(e) => setRemember(e.target.checked)} />
+          Keep me signed in on this device
+        </label>
         <Button type="submit" loading={loading} className="w-full">Sign in</Button>
       </form>
     </main>

@@ -64,9 +64,13 @@ It prints the full plan and waits for you to type `y`. Then it:
    sites won't show it.
 4. Writes settings to `/etc/video-downloader/video-downloader.env`. That file holds the
    secrets, and only root and `videodl` can read it.
-5. Installs systemd services: the API, two workers (`--workers 1`–`8`), the web UI, and a
-   cleanup timer that runs every 5 minutes.
-6. Adds a **new** Nginx site file `video-downloader.conf` for your domain only. It runs
+5. Installs systemd services: the API, two workers for everyone (`--workers 1`–`8`), one
+   extra **owner** worker that only runs your own jobs, the web UI, and a cleanup timer
+   that runs every 5 minutes.
+6. Creates a `videodl-media` group and adds Nginx's user to it. Nginx can then send video
+   files directly from disk, which is much faster than streaming them through Python. It
+   can read the media folder only, not the database or the settings.
+7. Adds a **new** Nginx site file `video-downloader.conf` for your domain only. It runs
    `nginx -t` first, and if the test fails it switches the new site off again, so your
    other sites keep working.
 
@@ -127,9 +131,12 @@ Every deploy does the same things:
 Open `https://videos.yourdomain.com`. Nobody needs to sign in: the app is open to anyone
 who has the address (`REQUIRE_LOGIN=false`).
 
-Optionally, create an admin account. Sign in at `https://videos.yourdomain.com/login`
-(not linked anywhere) to see server versions, storage, the audit trail and technical error
-details:
+**Create your owner account (recommended).** Signed in at
+`https://videos.yourdomain.com/login` (not linked anywhere), you get:
+* the priority queue and a reserved worker
+* higher limits, and files kept for 24 hours
+* the Publish page
+* daily stats and technical error details
 
 ```bash
 sudo video-downloader-cli create-admin yourname     # asks for a password (12+ characters)
@@ -154,8 +161,11 @@ Because anyone can use it, keep these in mind:
 * **Responsibility.** Your server fetches whatever visitors request from the supported
   sites.
 * **Built-in protections.** Per-IP rate limits, 20 new browser identities per IP per
-  hour, 5 jobs per visitor, `MAX_ACTIVE_JOBS_TOTAL` across everyone, size and duration
-  limits, low CPU priority and a 60-minute file lifetime.
+  hour, 3 jobs per visitor, `MAX_ACTIVE_JOBS_TOTAL` across everyone, smaller size,
+  duration and editing limits for guests, low CPU priority, a 60-minute file lifetime, and
+  shared results for repeated requests.
+* **Your own jobs** use a priority lane and a reserved worker, so a busy site never makes
+  you wait behind guests.
 * **Hiding it.** Use a hard-to-guess subdomain, or restrict by IP in the Nginx site with
   `allow 1.2.3.4; deny all;`. Both work without turning sign-in back on.
 
@@ -172,6 +182,8 @@ Because anyone can use it, keep these in mind:
 | Check tools | `sudo video-downloader-cli check` |
 | Reset password | `sudo video-downloader-cli reset-password yourname` |
 | Add a worker | `sudo systemctl enable --now video-downloader-worker@3`, and set `VD_WORKERS=3` in the env file |
+| Is the owner worker up? | `systemctl status video-downloader-worker@owner` |
+| Busiest failure reasons | sign in at `/login`, then open **Activity** |
 
 ## Rolling back
 
@@ -207,6 +219,7 @@ sudo rm -rf /opt/video-downloader /var/cache/video-downloader
 # Only when you no longer need the database, history and settings:
 sudo rm -rf /var/lib/video-downloader /etc/video-downloader
 sudo userdel videodl; sudo userdel -r videodl-deploy
+sudo gpasswd -d www-data videodl-media; sudo groupdel videodl-media
 ```
 
 Packages that the manifest lists as `apt:` were installed for this app. Remove them only
@@ -224,16 +237,17 @@ The site file answers only for your domain:
 
 Both app ports listen on `127.0.0.1` only, so no firewall changes are needed.
 
-**Optional: faster file delivery.** Nginx can send files directly instead of Python.
+**File delivery.** After the API checks that a file belongs to the visitor asking for it,
+it replies with an `X-Accel-Redirect` header. Nginx then sends the file itself, with
+seeking support, from the `internal`-only location `/_protected_media/`, which browsers
+can't open directly. This is on by default (`USE_X_ACCEL_REDIRECT=true`). The automated
+server test checks that it works and that other visitors get a 404.
 
-1. Set `USE_X_ACCEL_REDIRECT=true` in the env file.
-2. Let Nginx read the media folder: `sudo usermod -aG videodl www-data`, then
-   `sudo chmod 750 /var/lib/video-downloader /var/lib/video-downloader/media`.
-3. Restart Nginx and the API.
-
-**Behind Cloudflare.** Add `set_real_ip_from` for Cloudflare's IP ranges and
-`real_ip_header CF-Connecting-IP;` to the site. Otherwise rate limits count all visitors
-as one.
+**Behind Cloudflare.** The site file has commented `set_real_ip_from` and
+`real_ip_header CF-Connecting-IP;` lines. Uncomment them and list all of Cloudflare's
+current ranges from https://www.cloudflare.com/ips/. Otherwise rate limits count all
+visitors as one, and the site seems broken under load. Also set Cloudflare's SSL mode to
+"Full (strict)".
 
 ## Connecting GitHub
 

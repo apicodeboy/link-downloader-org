@@ -88,6 +88,8 @@ def run_ytdlp(
                 elif on_event is not None:
                     try:
                         on_event(msg)
+                    except MediaError:  # e.g. JobCancelled: stop yt-dlp now
+                        raise
                     except Exception:  # progress reporting must never kill the job
                         pass
             proc.wait()

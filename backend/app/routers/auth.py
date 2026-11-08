@@ -12,6 +12,7 @@ from ..audit import audit, client_ip
 from ..config import get_settings
 from ..db import get_db
 from ..deps import api_error, check_origin, rate_limited, require_csrf
+from ..limits import limits_for
 from ..models import User, UserSession, utcnow
 from ..schemas import LoginIn
 from ..security.passwords import DUMMY_HASH, verify_password
@@ -24,13 +25,14 @@ def _me(sess: UserSession) -> dict:
     u = sess.user
     return {"user": {"id": u.id, "username": u.username, "role": u.role}, "csrf_token": sess.csrf_token,
             "expires_at": sess.expires_at.isoformat(),
-            "mode": "login" if get_settings().require_login else "open"}
+            "mode": "login" if get_settings().require_login else "open",
+            "limits": limits_for(u.role).as_dict()}
 
 
-def _set_cookie(response: Response, token: str, user: User) -> None:
+def _set_cookie(response: Response, token: str, user: User, persistent: bool = False) -> None:
     s = get_settings()
     response.set_cookie(
-        s.session_cookie_name, token, max_age=session_max_age(user), httponly=True,
+        s.session_cookie_name, token, max_age=session_max_age(user, persistent), httponly=True,
         secure=s.session_cookie_secure, samesite="strict", path="/",
     )
 
@@ -63,9 +65,12 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     user.locked_until = None
     user.last_login_at = now
     db.commit()
-    token, sess = create_session(db, user, client_ip(request), request.headers.get("user-agent"))
-    _set_cookie(response, token, user)
-    audit(db, request, "login", user_id=user.id)
+    # Replace any guest session this browser had.
+    revoke_session(db, request.cookies.get(s.session_cookie_name))
+    token, sess = create_session(db, user, client_ip(request), request.headers.get("user-agent"),
+                                 persistent=body.remember)
+    _set_cookie(response, token, user, body.remember)
+    audit(db, request, "login", user_id=user.id, remember=body.remember)
     return _me(sess)
 
 

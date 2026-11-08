@@ -43,23 +43,44 @@ def delete_media_file(db: Session, mf: MediaFile, settings: Settings | None = No
     mf.deleted_at = utcnow()
 
 
-def _purge_idle_guests(db: Session) -> int:
-    """Remove guest identities that have no session left and never created anything."""
-    from sqlalchemy import exists
+def _purge_abandoned_guests(db: Session, settings: Settings) -> int:
+    """Delete guests whose browser identity has expired (nobody can reach their data any
+    more), together with their jobs, files and history. Admin accounts are never touched."""
+    from sqlalchemy import delete, exists, update
 
-    from ..models import AuditLog, PublishingJob, User, UserSession
+    from ..models import AuditLog, DownloadHistory, PublishingJob, User, UserSession
 
     has_session = exists().where(UserSession.user_id == User.id)
-    has_job = exists().where(MediaJob.user_id == User.id)
-    has_file = exists().where(MediaFile.user_id == User.id)
-    has_pub = exists().where(PublishingJob.user_id == User.id)
+    has_active_job = exists().where(MediaJob.user_id == User.id, MediaJob.status.in_(JobStatus.ACTIVE))
     cutoff = utcnow() - timedelta(hours=1)
-    guests = db.scalars(select(User).where(User.role == "guest", User.created_at < cutoff, ~has_session,
-                                           ~has_job, ~has_file, ~has_pub)).all()
-    for g in guests:
-        db.query(AuditLog).filter(AuditLog.user_id == g.id).update({AuditLog.user_id: None})
-        db.delete(g)
-    return len(guests)
+    guest_ids = list(db.scalars(select(User.id).where(
+        User.role == "guest", User.created_at < cutoff, ~has_session, ~has_active_job).limit(500)))
+    if not guest_ids:
+        return 0
+    for mf in db.scalars(select(MediaFile).where(MediaFile.user_id.in_(guest_ids),
+                                                 MediaFile.deleted_at.is_(None))).all():
+        delete_media_file(db, mf, settings)
+    db.flush()
+    db.execute(update(AuditLog).where(AuditLog.user_id.in_(guest_ids)).values(user_id=None))
+    for model in (DownloadHistory, PublishingJob, MediaFile):
+        db.execute(delete(model).where(model.user_id.in_(guest_ids)))
+    # Children first: download/process jobs point at their analysis job.
+    db.execute(delete(MediaJob).where(MediaJob.user_id.in_(guest_ids), MediaJob.parent_job_id.is_not(None)))
+    db.execute(delete(MediaJob).where(MediaJob.user_id.in_(guest_ids)))
+    db.execute(delete(User).where(User.id.in_(guest_ids)))
+    return len(guest_ids)
+
+
+def _purge_old_audit(db: Session, settings: Settings) -> int:
+    from sqlalchemy import delete
+
+    from ..models import AuditLog
+
+    if settings.audit_retention_days <= 0:
+        return 0
+    res = db.execute(delete(AuditLog).where(
+        AuditLog.created_at < utcnow() - timedelta(days=settings.audit_retention_days)))
+    return res.rowcount or 0
 
 
 def cleanup_expired(settings: Settings | None = None) -> dict[str, int]:
@@ -67,7 +88,7 @@ def cleanup_expired(settings: Settings | None = None) -> dict[str, int]:
     s.ensure_dirs()
     now = utcnow()
     stats = {"files_deleted": 0, "work_dirs_removed": 0, "stale_jobs_failed": 0, "sessions_purged": 0,
-             "guests_removed": 0}
+             "guests_removed": 0, "audit_rows_removed": 0}
 
     with session_scope() as db:
         expired = db.scalars(select(MediaFile).where(
@@ -86,7 +107,9 @@ def cleanup_expired(settings: Settings | None = None) -> dict[str, int]:
             job.finished_at = now
             stats["stale_jobs_failed"] += 1
         stats["sessions_purged"] = purge_expired(db)
-        stats["guests_removed"] = _purge_idle_guests(db)
+    with session_scope() as db:
+        stats["guests_removed"] = _purge_abandoned_guests(db, s)
+        stats["audit_rows_removed"] = _purge_old_audit(db, s)
 
     # Work directories left behind by crashed jobs.
     cutoff = time.time() - max(s.download_timeout_seconds, s.process_timeout_seconds) * 2

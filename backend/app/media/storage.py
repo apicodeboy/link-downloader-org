@@ -39,14 +39,41 @@ def resolve_stored(root: Path, relative: str) -> Path:
 
 
 def dir_size(path: Path) -> int:
+    """Bytes used under path. Hard-linked copies (shared downloads) are counted once."""
     total = 0
+    seen: set[tuple[int, int]] = set()
     for dirpath, _dirs, files in os.walk(path):
         for f in files:
             try:
-                total += os.lstat(os.path.join(dirpath, f)).st_size
+                st = os.lstat(os.path.join(dirpath, f))
             except OSError:
-                pass
+                continue
+            key = (st.st_dev, st.st_ino)
+            if key in seen:
+                continue
+            seen.add(key)
+            total += st.st_size
     return total
+
+
+def match_parent_group(path: Path) -> None:
+    """Give a moved file its folder's group, so Nginx (X-Accel) can read it."""
+    try:
+        gid = path.parent.stat().st_gid
+        if path.stat().st_gid != gid:
+            os.chown(path, -1, gid)
+    except OSError:
+        pass
+
+
+def link_or_copy(src: Path, dst: Path) -> None:
+    """Share a file between jobs without using extra disk space when possible."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+    match_parent_group(dst)
 
 
 def check_disk_capacity(settings: Settings | None = None) -> None:

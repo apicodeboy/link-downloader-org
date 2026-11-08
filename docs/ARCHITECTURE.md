@@ -46,6 +46,21 @@
    `GET /api/media/{id}/file`, which only serves the file to the identity that created it, and supports seeking.
 8. The cleanup timer deletes the file after the retention period. The history row stays.
 
+## Public-site features
+
+* **Two queues.** Admin jobs go to `<QUEUE_NAME>-priority`, which every worker checks first.
+  `video-downloader-worker@owner` serves only that queue, so the owner always has a free worker.
+* **Shared results** (`jobs/cache.py`). Links are normalized (tracking parameters such as
+  `?si=`, `?igsh=` and `utm_*` removed, `twitter.com` treated as `x.com`). A matching analysis
+  from the last `RESULT_CACHE_MINUTES` is copied into a new job for the visitor. A matching
+  download, with the same format and at least 5 minutes left, is hard-linked into the
+  visitor's own folder. Each copy expires on its own schedule, and storage counts shared
+  copies once.
+* **Per-role limits** (`limits.py`). These are applied when a job is created and stored in its options.
+* **Cancellation.** Queued jobs are marked cancelled immediately. Running downloads set
+  `cancel_requested`. The worker checks it every second and kills the yt-dlp process.
+* **File delivery.** The API authorizes, then Nginx sends the file via `X-Accel-Redirect`.
+
 ## Database
 
 SQLAlchemy 2 models in `backend/app/models.py` and Alembic migrations in `backend/alembic/`.

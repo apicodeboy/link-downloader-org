@@ -48,6 +48,8 @@ export interface AnalysisResult {
   entry_count: number;
   too_long: boolean;
   max_duration_seconds: number;
+  process_max_duration_seconds?: number | null;
+  cached?: boolean;
   thumbnail_file_id?: string;
   warnings?: string[];
 }
@@ -65,6 +67,7 @@ export interface DownloadResult {
   caption: string | null;
   expires_at: string;
   has_audio: boolean;
+  cached?: boolean;
 }
 
 export interface ProcessResult {
@@ -91,6 +94,8 @@ export interface Job<R = unknown> {
   result: R | null;
   error: ApiErrorBody | null;
   error_detail?: string;
+  cancel_requested?: boolean;
+  queue_position?: number | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -192,4 +197,29 @@ export interface Me {
   csrf_token: string;
   expires_at: string;
   mode: "open" | "login";
+  limits: Limits;
+}
+
+export interface Limits {
+  max_filesize_mb: number;
+  max_duration_seconds: number;
+  process_max_duration_seconds: number | null;
+  max_pending_jobs: number;
+  retention_minutes: number;
+  priority: boolean;
+}
+
+export interface SiteInfo {
+  site_name: string;
+  contact_email: string | null;
+  platforms: string[];
+  guest_limits: {
+    max_filesize_mb: number;
+    max_duration_seconds: number;
+    process_max_duration_seconds: number | null;
+    retention_minutes: number;
+    max_pending_jobs: number;
+  };
+  history_days: number;
+  log_retention_days: number;
 }

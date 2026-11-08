@@ -52,6 +52,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Build release
         if: steps.check.outputs.ready == 'true'
+        env:
+          # Optional repository variable (Settings > Secrets and variables > Actions > Variables).
+          NEXT_PUBLIC_SITE_NAME: ${{ vars.SITE_NAME }}
         run: scripts/build-release.sh "$(git rev-parse --short HEAD)"
       - name: Upload and activate
         if: steps.check.outputs.ready == 'true'

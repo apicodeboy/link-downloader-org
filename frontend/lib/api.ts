@@ -16,6 +16,8 @@ const identityReady = new Promise<void>((resolve) => {
   markReady = resolve;
 });
 
+const PUBLIC_PATHS = ["/api/auth/", "/api/site", "/api/health"];
+
 export function setIdentityReady() {
   markReady();
 }
@@ -31,7 +33,7 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
 type Options = { method?: string; body?: unknown; form?: FormData; signal?: AbortSignal };
 
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
-  if (!path.startsWith("/api/auth/")) await identityReady;
+  if (!PUBLIC_PATHS.some((p) => path.startsWith(p))) await identityReady;
   const method = opts.method ?? (opts.body !== undefined || opts.form ? "POST" : "GET");
   const headers: Record<string, string> = { Accept: "application/json" };
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;

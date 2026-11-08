@@ -23,10 +23,24 @@ def job_out(job: MediaJob) -> dict:
         "options": job.options or {},
         "result": job.result,
         "error": {"code": job.error_code, "message": job.error_message} if job.error_code else None,
+        "cancel_requested": bool(job.cancel_requested),
         "created_at": _dt(job.created_at),
         "started_at": _dt(job.started_at),
         "finished_at": _dt(job.finished_at),
     }
+
+
+def personalize(out: dict, limits) -> dict:
+    """Recompute 'too long' for this viewer (guests and admins have different limits)."""
+    result = out.get("result")
+    if out.get("kind") == "analyze" and isinstance(result, dict):
+        result = dict(result)
+        duration = result.get("duration") or 0
+        result["max_duration_seconds"] = limits.max_duration_seconds
+        result["too_long"] = bool(duration and duration > limits.max_duration_seconds)
+        result["process_max_duration_seconds"] = limits.process_max_duration_seconds
+        out["result"] = result
+    return out
 
 
 def file_out(mf: MediaFile) -> dict:

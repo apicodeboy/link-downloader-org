@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useMe } from "@/components/AppShell";
 import { JobProgress } from "@/components/JobProgress";
 import { Alert, Badge, Button, Card, CopyButton, LinkButton, SectionTitle, cx, inputClass } from "@/components/ui";
 import { api, errorMessage, fileUrl } from "@/lib/api";
 import { CAPTION_SOURCE_LABEL, PLATFORM_LABEL, formatBytes, formatDuration, timeUntil } from "@/lib/format";
 import type { AnalysisResult, DownloadResult, FormatOption, Job } from "@/lib/types";
+import { minutes, useSiteInfo } from "@/lib/site";
 import { useJob } from "@/lib/useJob";
 
 export default function DashboardPage() {
@@ -19,20 +21,38 @@ export default function DashboardPage() {
   const analysis = useJob<AnalysisResult>(analysisId);
   const download = useJob<DownloadResult>(downloadId);
 
-  const analyze = async (e: FormEvent) => {
-    e.preventDefault();
+  const me = useMe();
+  const startAnalysis = useCallback(async (target: string) => {
     setSubmitting(true);
     setFormError(null);
     setDownloadId(null);
     try {
-      const job = await api<Job>("/api/media/analyze", { body: { url } });
+      const job = await api<Job>("/api/media/analyze", { body: { url: target } });
       setAnalysisId(job.id);
     } catch (err) {
       setFormError(errorMessage(err));
     } finally {
       setSubmitting(false);
     }
+  }, []);
+
+  const analyze = (e: FormEvent) => {
+    e.preventDefault();
+    startAnalysis(url);
   };
+
+  // Links shared to the site (phone share sheet, bookmarklet, ?url=…) start right away.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || !me) return;
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.get("url") || params.get("text")?.match(/https?:\/\/\S+/)?.[0];
+    if (!shared) return;
+    autoStarted.current = true;
+    setUrl(shared);
+    window.history.replaceState(null, "", "/");
+    startAnalysis(shared);
+  }, [me, startAnalysis]);
 
   const paste = async () => {
     try {
@@ -68,9 +88,17 @@ export default function DashboardPage() {
           </div>
           <Button type="submit" loading={submitting} className="sm:w-44">Analyze Video</Button>
         </form>
+        {me && (
+          <p className="mt-3 text-xs text-faint">
+            Videos up to {minutes(me.limits.max_duration_seconds)} and {me.limits.max_filesize_mb} MB ·
+            files are deleted after {minutes(me.limits.retention_minutes * 60)}
+          </p>
+        )}
         {formError && <div className="mt-3"><Alert>{formError}</Alert></div>}
         {analysis.job && analysis.job.status !== "completed" && (
-          <div className="mt-4"><JobProgress job={analysis.job} pollError={analysis.error} /></div>
+          <div className="mt-4">
+            <JobProgress job={analysis.job} pollError={analysis.error} onRetry={() => startAnalysis(url)} />
+          </div>
         )}
       </Card>
 
@@ -84,6 +112,50 @@ export default function DashboardPage() {
           downloadPollError={download.error}
         />
       )}
+
+      {!analysisId && <HowItWorks />}
+    </div>
+  );
+}
+
+function HowItWorks() {
+  const site = useSiteInfo();
+  const g = site?.guest_limits;
+  const faq: [string, string][] = [
+    ["Which sites work?", `${(site?.platforms ?? ["X / Twitter", "Instagram", "Facebook", "TikTok", "YouTube", "Reddit"]).join(", ")}. Support varies: platforms change often, and some videos can't be fetched without logging in.`],
+    ["Why did a video fail?", "Private, login-only, age-restricted, members-only and DRM-protected videos can't be downloaded. Sometimes a platform is temporarily rate-limiting us. Wait a few minutes and try again."],
+    ["How long are my files kept?", g ? `Downloads and edits are deleted from the server after ${minutes(g.retention_minutes * 60)}. Your list of past downloads stays in this browser for ${site?.history_days} days.` : "Files are deleted automatically after a short time."],
+    ["Do I need an account?", "No. Your files are private to this browser. Nobody else can see them."],
+    ["Is there a limit?", g ? `Videos up to ${minutes(g.max_duration_seconds)} and ${g.max_filesize_mb} MB, and ${g.max_pending_jobs} jobs at a time. Editing works for videos up to ${minutes(g.process_max_duration_seconds)}.` : "Yes, to keep the site fast for everyone."],
+    ["Can I use downloaded videos however I like?", "Only if you own them or have the creator's permission. Respect copyright and the platform's terms."],
+  ];
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          ["1. Paste a link", "Copy the post's link from the app or website, or share it straight to this site from your phone."],
+          ["2. Pick a quality", "See the caption, creator and length, then choose a resolution. Audio is always included."],
+          ["3. Save the MP4", "Download it, copy the caption, or add your watermark and convert to 9:16 in Edit."],
+        ].map(([t, d]) => (
+          <div key={t} className="rounded-2xl border border-line bg-surface p-4">
+            <p className="font-medium">{t}</p>
+            <p className="mt-1 text-sm text-muted">{d}</p>
+          </div>
+        ))}
+      </div>
+      <section aria-labelledby="faq">
+        <h2 id="faq" className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Questions</h2>
+        <div className="divide-y divide-line rounded-2xl border border-line bg-surface">
+          {faq.map(([q, a]) => (
+            <details key={q} className="group px-4 py-3">
+              <summary className="cursor-pointer list-none text-sm font-medium marker:hidden">
+                <span className="mr-2 inline-block text-faint transition-transform group-open:rotate-90">›</span>{q}
+              </summary>
+              <p className="mt-2 pl-4 text-sm text-muted">{a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -114,6 +186,8 @@ function AnalysisView({ analysisJob, result, onDownload, downloadJob, downloadPo
   };
 
   const busy = downloadJob != null && !["completed", "failed"].includes(downloadJob.status);
+  const editLimit = result.process_max_duration_seconds;
+  const canEdit = !editLimit || !result.duration || result.duration <= editLimit;
   const done = downloadJob?.status === "completed" ? downloadJob.result : null;
 
   return (
@@ -135,6 +209,7 @@ function AnalysisView({ analysisJob, result, onDownload, downloadJob, downloadPo
             <Badge tone="info">{PLATFORM_LABEL[result.platform] ?? result.platform}</Badge>
             <Badge>{formatDuration(result.duration)}</Badge>
             {result.entry_count > 1 && <Badge tone="warn">1 of {result.entry_count} videos in this post</Badge>}
+            {result.cached && <Badge tone="ok">Ready instantly</Badge>}
           </div>
           <h2 className="mt-3 text-lg font-semibold leading-snug break-words">
             {result.title ?? "Untitled video"}
@@ -202,7 +277,7 @@ function AnalysisView({ analysisJob, result, onDownload, downloadJob, downloadPo
           )}
           {error && <div className="mt-3"><Alert>{error}</Alert></div>}
           {downloadJob && downloadJob.status !== "completed" && (
-            <div className="mt-4"><JobProgress job={downloadJob} pollError={downloadPollError} /></div>
+            <div className="mt-4"><JobProgress job={downloadJob} pollError={downloadPollError} onRetry={start} /></div>
           )}
           {done && (
             <div className="mt-4 space-y-3 rounded-xl border border-ok/30 bg-ok/5 p-4">
@@ -213,11 +288,18 @@ function AnalysisView({ analysisJob, result, onDownload, downloadJob, downloadPo
               <p className="text-xs text-muted">Deleted from the server automatically {timeUntil(done.expires_at)}.</p>
               <div className="flex flex-wrap gap-2">
                 <LinkButton href={fileUrl(done.media_file_id, true)} variant="primary" download>Save MP4</LinkButton>
-                <Link href={`/process?file=${done.media_file_id}`}
-                      className="inline-flex h-11 items-center rounded-lg border border-line-strong bg-surface-3 px-4 text-sm hover:bg-line">
-                  Process video
-                </Link>
+                {canEdit && (
+                  <Link href={`/process?file=${done.media_file_id}`}
+                        className="inline-flex h-11 items-center rounded-lg border border-line-strong bg-surface-3 px-4 text-sm hover:bg-line">
+                    Edit video
+                  </Link>
+                )}
               </div>
+              {!canEdit && (
+                <p className="text-xs text-faint">
+                  Editing is available for videos up to {minutes(result.process_max_duration_seconds)}.
+                </p>
+              )}
             </div>
           )}
         </Card>

@@ -21,7 +21,7 @@ say() { echo "==> $*"; }
 workers() {
   local n
   n="$(grep -E '^VD_WORKERS=' "$ENVF" 2>/dev/null | tail -1 | cut -d= -f2-)"
-  for i in $(seq 1 "${n:-1}"); do echo "video-downloader-worker@$i.service"; done
+  for i in $(seq 1 "${n:-1}") owner; do echo "video-downloader-worker@$i.service"; done
 }
 units() { echo video-downloader-api.service video-downloader-web.service video-downloader-cleanup.timer; workers; }
 restart_all() {

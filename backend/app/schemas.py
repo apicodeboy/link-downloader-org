@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 class LoginIn(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=256)
+    remember: bool = False
 
 
 class AnalyzeIn(BaseModel):

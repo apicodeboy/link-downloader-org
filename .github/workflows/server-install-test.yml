@@ -48,6 +48,11 @@ jobs:
           curl -fsS -H 'Host: videos.example.test' http://127.0.0.1/api/health
           curl -fsS -o /dev/null -H 'Host: videos.example.test' http://127.0.0.1/login
           test "$(curl -fsS -H 'Host: other-site.test' http://127.0.0.1/)" = "other site"
+      - name: Guest file delivery through Nginx (X-Accel, ranges, privacy)
+        run: bash scripts/ci/check-file-serving.sh videos.example.test
+      - name: Owner worker and general workers are running
+        run: |
+          systemctl is-active video-downloader-worker@owner video-downloader-worker@1
       - name: Deploy r2, then roll back to r1
         run: |
           sudo -u videodl-deploy sudo -n /usr/local/sbin/video-downloader-deploy /home/videodl-deploy/incoming/video-downloader-r2.tar.gz

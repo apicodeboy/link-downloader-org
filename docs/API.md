@@ -20,17 +20,18 @@ disabled in production.
 
 | Method | Path | Body | Notes |
 | --- | --- | --- | --- |
-| POST | `/api/auth/login` | `{"username","password"}` | 200 `{user, csrf_token, expires_at}`. 401 wrong credentials. 429 locked or rate-limited. |
+| POST | `/api/auth/login` | `{"username","password","remember"?}` | 200 `{user, csrf_token, expires_at}`. 401 wrong credentials. 429 locked or rate-limited. |
 | POST | `/api/auth/logout` | | Revokes the session. |
-| GET | `/api/auth/me` | | Current identity, CSRF token and `mode` (`open` or `login`). In open mode it creates a guest identity on first visit (429 after 20 per IP per hour). |
+| GET | `/api/auth/me` | | Current identity, CSRF token, `mode` (`open` or `login`) and this identity's `limits`. In open mode it creates a guest identity on first visit (429 after 20 per IP per hour). |
 
 ## Media
 
 | Method | Path | Body | Result |
 | --- | --- | --- | --- |
-| POST | `/api/media/analyze` | `{"url": "https://x.com/…"}` | 202 job (`kind: "analyze"`). 400 with a reason if the URL is rejected. 429 `too_many_jobs` (per visitor) or `server_busy` (server-wide). 503 queue down. |
+| POST | `/api/media/analyze` | `{"url": "https://x.com/…"}` | 202 job (`kind: "analyze"`). It may already be `completed`, with `result.cached: true`, if someone fetched the same video recently. 400 with a reason if the URL is rejected. 429 `too_many_jobs` (per visitor) or `server_busy` (server-wide). 503 queue down. |
 | POST | `/api/media/download` | `{"analysis_job_id", "format_id"}` | 202 job (`kind: "download"`). `format_id` must be one the analysis returned, or `"best"`. 507 if storage is full. |
-| GET | `/api/jobs/{id}` | | Job status (see below). |
+| GET | `/api/jobs/{id}` | | Job status (see below), including `queue_position` while queued. |
+| POST | `/api/jobs/{id}/cancel` | | Cancels a queued job, or stops a download in progress. 409 for other steps. |
 | GET | `/api/jobs?status=active\|completed\|failed&limit=50` | | Recent jobs. |
 | GET | `/api/media/{id}` | | File details, generated `children` (thumbnails), and `source` (original caption, hashtags, creator). |
 | GET | `/api/media/{id}/file` | | The file itself. Supports `Range` for seeking. `?download=1` returns it as an attachment. 410 once expired. |
@@ -84,7 +85,7 @@ A completed **download** job's `result` has `media_file_id`, `filename`, `size_b
 | GET / POST | `/api/presets` | Body is the process options plus `name`. |
 | PUT / DELETE | `/api/presets/{id}` | |
 
-## Publishing
+## Publishing (admin only)
 
 | Method | Path | Notes |
 | --- | --- | --- |
@@ -92,7 +93,7 @@ A completed **download** job's `result` has `media_file_id`, `filename`, `size_b
 | POST | `/api/publishing/check` | Admin only. Read-only connection test. |
 | GET / POST | `/api/publishing/jobs` | Create: `{media_file_id, caption, hashtags[], destinations[], scheduled_at?}`. |
 | PATCH | `/api/publishing/jobs/{id}` | Edit. Removes any approval. |
-| POST | `/api/publishing/jobs/{id}/approve` | The draft's owner. Needs at least one destination. |
+| POST | `/api/publishing/jobs/{id}/approve` | Needs at least one destination. |
 | POST | `/api/publishing/jobs/{id}/cancel` | |
 | POST | `/api/publishing/jobs/{id}/submit` | Admin only. Needs approval and `PUBLISHING_SUBMIT_ENABLED=true`. Returns 501 until a verified provider exists. |
 | GET | `/api/publishing/jobs/{id}/package` | ZIP containing the MP4 and `caption.txt`. |
@@ -102,5 +103,6 @@ A completed **download** job's `result` has `media_file_id`, `filename`, `size_b
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/health` | Public. `{"status":"ok"\|"degraded","checks":{"database","queue","ffmpeg"}}` |
+| GET | `/api/site` | Public, no identity needed. Site name, contact email, platforms and guest limits (used by FAQ, Terms and Privacy). |
 | GET | `/api/status` | Any visitor. Queue depth, running jobs, storage percentage, limits. |
-| GET | `/api/admin/status` | Admin only. Versions, queue depth, job counts, storage use, recent failures, recent audit events. |
+| GET | `/api/admin/status` | Admin only. Versions, queue depth, job counts, storage use, `last_24h` (visitors, downloads, cache hits, failures by reason), recent failures and audit events. |

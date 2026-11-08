@@ -11,7 +11,11 @@ addresses (SSRF), and content that shouldn't be downloaded at all.
 | --- | --- | --- |
 | Access mode | Open by default: each browser silently gets its own guest identity (a 30-day cookie). Guests only see and delete their own jobs and files. Guest creation is limited to 20 per IP per hour, and abandoned guests are purged. `REQUIRE_LOGIN=true` makes the site accounts-only. | `routers/auth.py`, `jobs/cleanup.py` |
 | Admin authentication | Admin accounts are created only from the server command line, with scrypt password hashes and no sign-up page. Admin-only views: server status, audit trail, technical error details, publishing connection test and submit. | `security/passwords.py`, `cli.py`, `deps.py` |
-| Server-wide capacity | `MAX_ACTIVE_JOBS_TOTAL` caps queued and running jobs across all visitors. | `routers/media.py` |
+| Server-wide capacity | `MAX_ACTIVE_JOBS_TOTAL` caps queued and running guest jobs across all visitors. Guests have smaller size, duration and editing limits than the owner. The owner has a priority queue and a reserved worker. | `routers/media.py`, `limits.py`, `worker/` |
+| Publishing | Admin only. Destination accounts are the owner's social accounts, so guests never see or target them. | `routers/publishing.py` |
+| Shared results | A visitor asking for a video another visitor fetched recently gets a private hard-linked copy. Only the public video and its metadata are shared, never who asked for it. | `jobs/cache.py` |
+| Data minimization | Guest identities whose cookie has expired are deleted along with their jobs, files and history. Security logs are deleted after `AUDIT_RETENTION_DAYS`. | `jobs/cleanup.py` |
+| File delivery | Nginx sends files only after the API authorizes the request (`X-Accel-Redirect` to an `internal` location). Nginx can read the media folder through the `videodl-media` group, but not the database or settings. | Nginx template, `install-server.sh` |
 | Secure sessions | Random 256-bit token in an `HttpOnly; Secure; SameSite=Strict` cookie. The database stores only its SHA-256. 12 h absolute and 2 h idle expiry. Logout and password reset revoke sessions. | `security/sessions.py` |
 | Brute-force protection | 5 failures lock the account for 15 minutes. Login is rate-limited in the app and in Nginx. Unknown usernames take the same time as known ones. | `routers/auth.py`, Nginx template |
 | CSRF | Every state-changing request needs the `X-CSRF-Token` header matching the session, and the `Origin` must be in `ALLOWED_ORIGINS`. | `deps.py` |

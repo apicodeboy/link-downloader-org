@@ -14,7 +14,7 @@ PROTECTED = [
     ("get", "/api/auth/me"), ("post", "/api/auth/logout"),
     ("post", "/api/media/analyze"), ("post", "/api/media/download"), ("get", "/api/media/history"),
     ("get", "/api/media/abc"), ("get", "/api/media/abc/file"), ("delete", "/api/media/abc"),
-    ("post", "/api/media/abc/process"), ("get", "/api/jobs"), ("get", "/api/jobs/abc"),
+    ("post", "/api/media/abc/process"), ("get", "/api/jobs"), ("get", "/api/jobs/abc"), ("post", "/api/jobs/abc/cancel"),
     ("get", "/api/watermarks"), ("post", "/api/watermarks"), ("delete", "/api/watermarks/abc"),
     ("get", "/api/presets"), ("post", "/api/presets"), ("put", "/api/presets/1"), ("delete", "/api/presets/1"),
     ("get", "/api/admin/status"), ("get", "/api/status"), ("get", "/api/publishing/config"), ("post", "/api/publishing/check"),
@@ -32,7 +32,7 @@ def test_endpoints_require_login(anon_client, method, path):
 
 
 def test_every_route_is_covered_by_auth_test(app):
-    public = {("get", "/api/health"), ("post", "/api/auth/login")}
+    public = {("get", "/api/health"), ("post", "/api/auth/login"), ("get", "/api/site")}
     covered = {(m, p.replace("abc", "{file_id}").replace("/1", "/{id}")) for m, p in PROTECTED}
     for path, ops in app.openapi()["paths"].items():
         for method in ops:

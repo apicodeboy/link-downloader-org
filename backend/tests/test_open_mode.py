@@ -97,23 +97,13 @@ def test_login_mode_does_not_create_guests(app, settings):
         assert db.query(User).filter_by(role="guest").count() == 0
 
 
-def test_guest_can_approve_own_draft_but_not_submit(app, open_settings, monkeypatch):
-    monkeypatch.setattr(open_settings, "publishing_accounts", [{"id": "ig", "network": "instagram"}])
-    c, me = _visitor(app)
-    from app.models import FileKind, MediaFile
-
-    d = open_settings.media_dir / "g1"
-    d.mkdir(parents=True)
-    (d / "v.mp4").write_bytes(b"x")
-    with session_scope() as db:
-        mf = MediaFile(user_id=me["user"]["id"], kind=FileKind.VIDEO, path="g1/v.mp4", filename="v.mp4",
-                       mime_type="video/mp4", size_bytes=1)
-        db.add(mf)
-        db.flush()
-        fid = mf.id
-    pj = c.post("/api/publishing/jobs", json={"media_file_id": fid, "destinations": ["ig"]}).json()
-    assert c.post(f"/api/publishing/jobs/{pj['id']}/approve").json()["status"] == "approved"
-    assert c.post(f"/api/publishing/jobs/{pj['id']}/submit").status_code == 403
+def test_publishing_is_admin_only_on_a_public_site(app, open_settings):
+    """Destination accounts are the owner's, so guests can't see or use publishing."""
+    c, _ = _visitor(app)
+    for method, path in [("get", "/api/publishing/config"), ("get", "/api/publishing/jobs"),
+                         ("post", "/api/publishing/jobs"), ("post", "/api/publishing/jobs/1/approve")]:
+        r = c.post(path, json={}) if method == "post" else c.get(path)
+        assert r.status_code == 403, (path, r.status_code)
 
 
 def test_cleanup_removes_abandoned_guests_only(app, open_settings):

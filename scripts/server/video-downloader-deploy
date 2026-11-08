@@ -82,7 +82,7 @@ restart_all() {
   n="$(envget VD_WORKERS)"; n="${n:-1}"
   systemctl daemon-reload
   systemctl restart video-downloader-api.service video-downloader-web.service
-  for i in $(seq 1 "$n"); do systemctl restart "video-downloader-worker@$i.service"; done
+  for i in $(seq 1 "$n") owner; do systemctl restart "video-downloader-worker@$i.service"; done
   systemctl start video-downloader-cleanup.timer
 }
 healthy() {

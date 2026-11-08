@@ -9,6 +9,8 @@ queue named by `QUEUE_NAME` and runs `app.jobs.tasks.run_job` for each job.
 * Each job runs yt-dlp in a separate, time-limited, network-guarded process
   (`app/media/ytdlp_runner.py`) and FFmpeg as a separate process.
 * One worker process = one job at a time. Concurrency = number of worker processes.
+* Admin (site owner) jobs go to the `<QUEUE_NAME>-priority` queue. Every worker checks it
+  first, and the `owner` instance (`WORKER_INSTANCE=owner`) serves only that queue.
 
 Local run (from the `backend` folder):
 

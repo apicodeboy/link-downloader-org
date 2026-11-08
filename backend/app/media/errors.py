@@ -12,6 +12,11 @@ class MediaError(Exception):
         self.detail = detail
 
 
+class JobCancelled(MediaError):
+    def __init__(self):
+        super().__init__("cancelled", "Cancelled.")
+
+
 _RULES: list[tuple[str, str, str]] = [
     (r"Blocked connection to non-public address|blocked_address", "blocked_address",
      "Blocked for security: the video host tried to send us to a private network address."),

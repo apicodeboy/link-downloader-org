@@ -12,16 +12,24 @@ and prepares posts for publishing.
 
 ## Who can use it
 
-**Anyone who can open the site.** There is no sign-in screen. Each browser automatically
-gets its own private history for 30 days, so visitors never see or delete each other's
-files. Abuse limits stay on: per-IP rate limits, size and duration limits, at most 5 jobs
-per visitor, at most 20 jobs across the whole server, and blocking of private network
-addresses.
+It's built to run as a **public site**. Visitors don't need an account: each browser
+automatically gets its own private file list for 30 days, and nobody can see or delete
+anyone else's files.
 
-To make it private again, set `REQUIRE_LOGIN=true` in the settings file and create an
-account with `create-admin`. An administrator can always sign in at `/login`. That page
-isn't linked anywhere. Admins also see server versions, storage, the audit trail and
-technical error details.
+| | Guests (everyone) | You (the site owner) |
+| --- | --- | --- |
+| Sign-in | none | `/login` (not linked), "keep me signed in" for 30 days |
+| Longest video | 20 min | 30 min |
+| Largest file | 300 MB | 500 MB |
+| Editing (watermark, 9:16) | videos up to 5 min | any length |
+| Jobs at once | 3 | 5 |
+| Files kept | 60 min | 24 h |
+| Queue | normal | priority lane, plus a reserved worker; never refused when the site is busy |
+| Publish page and your social accounts | hidden | yes |
+| Activity page | own jobs, queue length | daily visitors, downloads, failure reasons, versions |
+
+All numbers are settings (see the table below). Set `REQUIRE_LOGIN=true` to make the site
+private instead.
 
 ## What you get
 
@@ -35,11 +43,19 @@ technical error details.
 * **Process.** Add a PNG watermark in the bottom-right corner (size, opacity, margin),
   convert to 9:16 with a blurred or black background, and generate 3 thumbnails. Audio is
   preserved and the original frame is never cropped. Settings can be saved as presets.
-* **Publish.** Pick a video, edit the prefilled caption, add hashtags, choose accounts and
-  approve your own draft. Then download a ready-to-upload package. Metricool support is prepared but off;
+* **Publish** (owner only). Pick a video, edit the prefilled caption, add hashtags, choose
+  your accounts and approve. Then download a ready-to-upload package. Metricool support is prepared but off;
   see [docs/METRICOOL.md](docs/METRICOOL.md).
 * **Jobs.** A live monitor with queue length, storage use and tool versions.
-* Dark mode, and works on a phone.
+* **Fast repeat requests.** When several visitors ask for the same video, the result is
+  shared, so it's instant for them and the server sends fewer requests to the platforms.
+* **Phone friendly.** Visitors can install the site to their home screen. On Android it
+  then appears in the share sheet: share a TikTok or Reel straight to the site. Links like
+  `https://your-site/?url=<video link>` start automatically.
+* **Queue position and Cancel** for waiting or downloading jobs, and **Try again** after
+  temporary failures.
+* **Terms**, **Privacy** and FAQ pages that pull the real limits and your contact address.
+* Dark mode.
 
 ## How it fits together
 
@@ -98,7 +114,7 @@ http://127.0.0.1:8010/api/docs.
 ### Run the tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q      # 171 tests; no internet needed
+cd backend && .venv/bin/python -m pytest -q      # 192 tests; no internet needed
 cd frontend && npm run typecheck && npm run build
 ```
 
@@ -118,12 +134,17 @@ Never commit either file. The ones you're most likely to change:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `CONTACT_EMAIL` | — | Shown on Terms and Privacy for questions and takedown requests. **Set this.** |
+| `SITE_NAME` | `Video Downloader` | Name on the Terms and Privacy pages. For the header, also set the GitHub variable `SITE_NAME`. |
 | `REQUIRE_LOGIN` | `false` | `false` = open to everyone, no sign-in. `true` = accounts only |
-| `MAX_ACTIVE_JOBS_TOTAL` | `20` | Jobs queued or running across all visitors |
+| `MAX_ACTIVE_JOBS_TOTAL` | `20` | Guest jobs queued or running across all visitors |
+| `GUEST_MAX_DURATION_SECONDS` / `GUEST_MAX_FILESIZE_MB` | `1200` / `300` | Guest download limits |
+| `GUEST_PROCESS_MAX_DURATION_SECONDS` | `300` | Longest video a guest can edit (editing uses a lot of CPU) |
+| `RESULT_CACHE_MINUTES` | `30` | How long an analysis is shared with other visitors |
 | `ALLOWED_ORIGINS` | — | The exact address you open the app at, e.g. `https://videos.example.com` |
 | `RETENTION_MINUTES` | `60` | Minutes before downloaded and processed files are deleted |
-| `MAX_FILESIZE_MB` | `500` | Largest video accepted |
-| `MAX_DURATION_SECONDS` | `1800` | Longest video accepted (30 minutes) |
+| `MAX_FILESIZE_MB` | `500` | Largest video for you (admin) |
+| `MAX_DURATION_SECONDS` | `1800` | Longest video for you (30 minutes) |
 | `MAX_STORAGE_MB` | `5000` | Total disk space the app may use |
 | `MIN_FREE_DISK_MB` | `2000` | Stop new jobs when the disk gets this full |
 | `MAX_PENDING_JOBS_PER_USER` | `5` | Jobs a user can have queued or running at once |
@@ -148,6 +169,25 @@ Full guide: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. In short:
 
 Undo at any time with `sudo video-downloader-rollback` (previous version) or
 `sudo video-downloader-rollback --disable` (switch the app off).
+
+## Running it as a public site
+
+1. **Set `CONTACT_EMAIL`** in the server settings file. The Terms page tells rights holders
+   to use it for takedown requests, so use an address you check.
+2. **Read the Terms and Privacy pages** at `/terms` and `/privacy`. They are a sensible
+   starting point written for how this app actually behaves, not legal advice. Have them
+   checked for your country, then edit `frontend/app/(public)/`.
+3. **Merge yt-dlp updates promptly.** Dependabot checks daily and opens a pull request.
+   CI tests it, and merging deploys it. An outdated yt-dlp is the most common reason
+   downloads start failing.
+4. **Check Activity now and then** (signed in as owner). Many `rate_limited` failures mean
+   a platform is throttling your server's IP. Lower `MAX_ACTIVE_JOBS_TOTAL` or the worker
+   count for a while.
+5. **Using Cloudflare?** Enable the real-IP lines in the Nginx site (see
+   [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#nginx-details)). Otherwise every visitor shares
+   one rate limit.
+6. **Name it.** Set `SITE_NAME` in the settings file and as a GitHub Actions variable
+   (Settings → Secrets and variables → Actions → Variables), so the header matches.
 
 ## Connect to GitHub
 
@@ -181,7 +221,8 @@ The error message tells you what happened. Common ones:
 | --- | --- | --- |
 | *The platform requires a login…* / *This content is private* | Not public | Nothing. This app won't bypass logins. |
 | *DRM-protected* / *paywall* / *age-restricted* | Protected content | Not supported, by design. |
-| *rate-limiting the server* | The platform is throttling your server's IP | Wait, then try again. Don't retry in a loop. |
+| *rate-limiting the server* | The platform is throttling your server's IP | Wait, then try again. If it keeps happening, lower `MAX_ACTIVE_JOBS_TOTAL` or the number of workers. |
+| *The server is busy* | `MAX_ACTIVE_JOBS_TOTAL` guest jobs are already running | Visitors try again shortly. Raise it only if the VPS has spare CPU. |
 | *The platform changed something…* / *Unable to extract* | yt-dlp needs an update | [Update yt-dlp](#update-yt-dlp-safely). |
 | *isn't a supported site* | Domain not on the allowlist | Use the post's direct link, or see `ALLOW_OTHER_YTDLP_SITES`. |
 | *Blocked for security* | The link points to a private or internal address | Working as intended. |
@@ -196,8 +237,9 @@ which is useful for bug reports.
 
 ## Update yt-dlp safely
 
-Platforms change often, so yt-dlp ships fixes frequently. Update it through Git, so every
-update is tested and can be rolled back:
+Platforms change often, so yt-dlp ships fixes frequently. **Dependabot opens a pull request
+for each new yt-dlp release automatically.** Merge it once CI is green, and it deploys.
+To update by hand instead, go through Git so the update is tested and can be rolled back:
 
 ```bash
 cd backend

@@ -51,6 +51,29 @@ class Settings(BaseSettings):
     # Server-wide cap on queued + running jobs (protects a shared VPS when the app is open).
     max_active_jobs_total: int = 20
 
+    # Guests vs. the site owner (admin accounts). Guests get smaller limits so the server
+    # stays fast for everyone; the general MAX_* settings below apply to admins.
+    guest_max_filesize_mb: int = 300
+    guest_max_duration_seconds: int = 1200
+    guest_process_max_duration_seconds: int = 300
+    guest_max_pending_jobs: int = 3
+    # Admin downloads are kept longer (minutes).
+    admin_retention_minutes: int = 1440
+    # "Keep me signed in" lifetime for admin sessions.
+    admin_remember_days: int = 30
+
+    # Reuse a recent analysis / download when another visitor requests the same video.
+    # Faster for visitors and fewer requests from your server's IP to the platforms.
+    result_cache_minutes: int = 30
+    reuse_downloads: bool = True
+
+    # Data housekeeping
+    audit_retention_days: int = 90
+
+    # Public site information (shown on the Terms, Privacy and FAQ pages)
+    site_name: str = "Video Downloader"
+    contact_email: str = ""
+
     # Sessions / auth
     session_cookie_name: str = "vd_session"
     session_cookie_secure: bool = True

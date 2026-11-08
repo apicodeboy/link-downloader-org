@@ -20,6 +20,12 @@ interface AdminStatus {
   jobs: Record<string, number>;
   storage: { used_bytes: number; quota_bytes: number; disk_free_bytes: number; disk_total_bytes: number };
   limits: Record<string, number>;
+  last_24h?: {
+    completed: Record<string, number>;
+    failures_by_reason: { code: string; count: number }[];
+    served_from_cache: number;
+    active_visitors: number;
+  };
 }
 
 const FILTERS = [
@@ -61,8 +67,8 @@ export default function JobsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
-        <p className="mt-1 text-sm text-muted">Live view of background work. Refreshes every few seconds.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
+        <p className="mt-1 text-sm text-muted">Your recent jobs and how busy the server is. Updates every few seconds.</p>
       </div>
 
       {status && (
@@ -82,6 +88,24 @@ export default function JobsPage() {
       )}
       {!status && pub && (
         <p className="text-xs text-faint">Files are kept {pub.limits.retention_minutes} min · max {pub.limits.max_filesize_mb} MB per video</p>
+      )}
+      {status?.last_24h && (
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Stat label="Visitors (24 h)" value={String(status.last_24h.active_visitors)} />
+          <Stat label="Downloads (24 h)" value={String(status.last_24h.completed.download ?? 0)} />
+          <Stat label="Served from cache" value={String(status.last_24h.served_from_cache)} />
+          <Stat label="Failures (24 h)" value={String(status.last_24h.failures_by_reason.reduce((n, f) => n + f.count, 0))}
+                bad={status.last_24h.failures_by_reason.some((f) => f.code === "rate_limited" && f.count >= 5)} />
+        </div>
+      )}
+      {status?.last_24h && status.last_24h.failures_by_reason.length > 0 && (
+        <p className="text-xs text-muted">
+          Top failure reasons: {status.last_24h.failures_by_reason.map((f) => `${f.code} (${f.count})`).join(", ")}
+          {status.last_24h.failures_by_reason.some((f) => f.code === "rate_limited") &&
+            " · rate_limited means a platform is throttling your server's IP. Fewer workers or a pause helps."}
+          {status.last_24h.failures_by_reason.some((f) => f.code === "extractor_failed") &&
+            " · extractor_failed usually means yt-dlp needs an update."}
+        </p>
       )}
       {status && (
         <p className="text-xs text-faint">

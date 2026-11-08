@@ -5,17 +5,19 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { ApiError, api, errorMessage, setCsrfToken, setIdentityReady, setUnauthorizedHandler } from "@/lib/api";
 import type { Me } from "@/lib/types";
+import { SITE_NAME } from "@/lib/site";
+import { SiteFooter } from "./SiteFooter";
 import { Spinner, cx } from "./ui";
 
 const MeContext = createContext<Me | null>(null);
 export const useMe = () => useContext(MeContext);
 
 const NAV = [
-  { href: "/", label: "Download" },
-  { href: "/history", label: "History" },
-  { href: "/process", label: "Process" },
-  { href: "/publish", label: "Publish" },
-  { href: "/jobs", label: "Jobs" },
+  { href: "/", label: "Download", adminOnly: false },
+  { href: "/history", label: "My files", adminOnly: false },
+  { href: "/process", label: "Edit", adminOnly: false },
+  { href: "/publish", label: "Publish", adminOnly: true },
+  { href: "/jobs", label: "Activity", adminOnly: false },
 ];
 
 // One identity request per page load, even if effects run twice (React dev mode). This
@@ -96,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 pt-3 sm:pt-0 sm:h-16 flex-wrap sm:flex-nowrap">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <span aria-hidden className="grid size-8 place-items-center rounded-lg bg-accent text-accent-fg">▼</span>
-            <span>Video Downloader</span>
+            <span>{SITE_NAME}</span>
           </Link>
           {!isGuest && (
             <div className="ml-auto flex items-center gap-2 text-sm sm:order-last">
@@ -105,7 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           )}
           <nav className="-mx-4 flex w-[calc(100%+2rem)] gap-1 overflow-x-auto px-4 pb-2 sm:mx-0 sm:w-auto sm:pb-0 sm:ml-6" aria-label="Main">
-            {NAV.map((n) => {
+            {NAV.filter((n) => !n.adminOnly || me.user.role === "admin").map((n) => {
               const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
               return (
                 <Link key={n.href} href={n.href} aria-current={active ? "page" : undefined}
@@ -119,10 +121,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:py-8">{children}</main>
-      <footer className="mx-auto w-full max-w-5xl px-4 pb-8 text-xs text-faint">
-        Only download content you own or are authorized to use. Private, login-protected and DRM-protected content is not supported.
-        {isGuest && " Your downloads and history are tied to this browser."}
-      </footer>
+      <SiteFooter note={isGuest ? "Your files and history are private to this browser." : undefined} />
     </MeContext.Provider>
   );
 }

@@ -46,8 +46,8 @@ export default function HistoryPage() {
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Download history</h1>
-          <p className="mt-1 text-sm text-muted">Files are removed from the server after the retention period; the history stays.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">My files</h1>
+          <p className="mt-1 text-sm text-muted">Files are deleted from the server after a while. This list stays in your browser.</p>
         </div>
         <Button variant="secondary" onClick={() => { setOffset(0); load(0); }} className="h-9 px-3">Refresh</Button>
       </div>

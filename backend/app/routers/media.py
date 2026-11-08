@@ -13,32 +13,39 @@ from ..config import get_settings
 from ..db import get_db
 from ..deps import api_error, current_user, rate_limited, require_csrf
 from ..jobs.cleanup import delete_media_file, file_root
+from ..jobs.cache import clone_analysis, clone_download, find_cached_analysis, find_cached_download
 from ..jobs.tasks import find_active_jobs
+from ..limits import Limits, limits_for
 from ..media.errors import MediaError
 from ..media.storage import check_disk_capacity, resolve_stored
 from ..models import (DownloadHistory, FileKind, JobKind, JobStatus, MediaFile, MediaJob, ProcessingPreset,
                       User)
 from ..schemas import AnalyzeIn, DownloadIn, ProcessIn
 from ..security.url_guard import URLRejected, validate_url
-from ..serializers import file_out, history_out, job_out
+from ..serializers import file_out, history_out, job_out, personalize
 
 router = APIRouter(prefix="/api/media", tags=["media"],
                    dependencies=[Depends(rate_limited("api", "rate_limit_per_minute"))])
 
 
-def _check_pending(db: Session, user: User) -> None:
+def _check_pending(db: Session, user: User, limits: Limits) -> None:
     s = get_settings()
     total = db.scalar(select(func.count()).select_from(MediaJob).where(MediaJob.status.in_(JobStatus.ACTIVE)))
-    if total >= s.max_active_jobs_total:
+    # The site owner is never turned away because guests filled the queue.
+    if total >= s.max_active_jobs_total and not limits.priority:
         raise api_error(429, "server_busy", "The server is busy with other jobs. Try again in a few minutes.")
-    if find_active_jobs(db, user.id) >= s.max_pending_jobs_per_user:
+    if find_active_jobs(db, user.id) >= limits.max_pending_jobs:
         raise api_error(429, "too_many_jobs", "You already have the maximum number of jobs running. "
                                               "Wait for one to finish.")
 
 
-def _enqueue(request: Request, db: Session, job: MediaJob, timeout: int) -> None:
+def _base_options(limits: Limits) -> dict:
+    return {"retention_minutes": limits.retention_minutes, "priority": limits.priority}
+
+
+def _enqueue(request: Request, db: Session, job: MediaJob, timeout: int, priority: bool = False) -> None:
     try:
-        job.rq_job_id = request.app.state.queue.enqueue(job.id, timeout)
+        job.rq_job_id = request.app.state.queue.enqueue(job.id, timeout, priority=priority)
         db.commit()
     except Exception as exc:  # Redis down
         job.status = JobStatus.FAILED
@@ -65,11 +72,18 @@ def analyze(body: AnalyzeIn, request: Request, user: User = Depends(current_user
     except URLRejected as exc:
         audit(db, request, "analyze", user_id=user.id, success=False, reason=exc.code, url=body.url[:500])
         raise api_error(400, exc.code, exc.message) from None
-    _check_pending(db, user)
-    job = MediaJob(user_id=user.id, kind=JobKind.ANALYZE, source_url=url, stage="Waiting in queue")
+    limits = limits_for(user.role)
+    cached = find_cached_analysis(db, url)
+    if cached is not None:
+        job = clone_analysis(db, cached, user.id, url, _base_options(limits))
+        audit(db, request, "analyze", user_id=user.id, target_type="job", target_id=job.id, url=url, cached=True)
+        return personalize(job_out(job), limits)
+    _check_pending(db, user, limits)
+    job = MediaJob(user_id=user.id, kind=JobKind.ANALYZE, source_url=url, stage="Waiting in queue",
+                   options=_base_options(limits))
     db.add(job)
     db.commit()
-    _enqueue(request, db, job, get_settings().analyze_timeout_seconds)
+    _enqueue(request, db, job, get_settings().analyze_timeout_seconds, limits.priority)
     audit(db, request, "analyze", user_id=user.id, target_type="job", target_id=job.id, url=url)
     return job_out(job)
 
@@ -83,15 +97,25 @@ def download(body: DownloadIn, request: Request, user: User = Depends(current_us
     if analysis.status != JobStatus.COMPLETED or not analysis.result:
         raise api_error(409, "not_ready", "The video hasn't finished analyzing yet.")
     result = analysis.result
-    if result.get("too_long"):
-        raise api_error(400, "too_long", f"This video is longer than the {result.get('max_duration_seconds')}-second "
-                                         "limit set on the server.")
+    limits = limits_for(user.role)
+    if result.get("duration") and result["duration"] > limits.max_duration_seconds:
+        raise api_error(400, "too_long", f"This video is longer than the {limits.max_duration_seconds // 60}-minute "
+                                         "limit on this site.")
     if result.get("is_live"):
         raise api_error(400, "live_content", "Live streams can't be downloaded while they're live.")
     option = next((f for f in result.get("formats", []) if f["format_id"] == body.format_id), None)
     if option is None:
         raise api_error(400, "invalid_format", "That format isn't available for this video. Pick one from the list.")
-    _check_pending(db, user)
+    options = {**_base_options(limits), "format": option, "title": result.get("title"),
+               "limits": {"max_filesize_mb": limits.max_filesize_mb,
+                          "max_duration_seconds": limits.max_duration_seconds}}
+    cached_file = find_cached_download(db, analysis, option["format_id"], limits.max_filesize_mb * 1024 * 1024)
+    if cached_file is not None:
+        job = clone_download(db, cached_file, analysis, user.id, options)
+        audit(db, request, "download", user_id=user.id, target_type="job", target_id=job.id,
+              format=option["label"], url=job.source_url, cached=True)
+        return job_out(job)
+    _check_pending(db, user, limits)
     try:
         check_disk_capacity()
     except MediaError as exc:
@@ -99,11 +123,12 @@ def download(body: DownloadIn, request: Request, user: User = Depends(current_us
     job = MediaJob(
         user_id=user.id, kind=JobKind.DOWNLOAD, parent_job_id=analysis.id,
         source_url=analysis.resolved_url or analysis.source_url, platform=analysis.platform,
-        options={"format": option, "title": result.get("title")}, stage="Waiting in queue",
+        options=options, stage="Waiting in queue",
     )
     db.add(job)
     db.commit()
-    _enqueue(request, db, job, get_settings().download_timeout_seconds + get_settings().process_timeout_seconds)
+    _enqueue(request, db, job, get_settings().download_timeout_seconds + get_settings().process_timeout_seconds,
+             limits.priority)
     audit(db, request, "download", user_id=user.id, target_type="job", target_id=job.id,
           format=option["label"], url=job.source_url)
     return job_out(job)
@@ -226,6 +251,11 @@ def process(file_id: str, body: ProcessIn, request: Request, user: User = Depend
         raise api_error(400, "invalid_file", "Only downloaded videos can be processed.")
     if not mf.available:
         raise api_error(410, "expired", "This video has expired. Download it again first.")
+    limits = limits_for(user.role)
+    if limits.process_max_duration_seconds and (mf.duration or 0) > limits.process_max_duration_seconds:
+        raise api_error(400, "too_long_to_process",
+                        f"Editing is available for videos up to {limits.process_max_duration_seconds // 60} minutes. "
+                        "You can still download this one as is.")
     opts = body.model_dump(exclude={"preset_id"})
     if body.preset_id is not None:
         preset = db.get(ProcessingPreset, body.preset_id)
@@ -242,18 +272,19 @@ def process(file_id: str, body: ProcessIn, request: Request, user: User = Depend
             raise api_error(400, "invalid_watermark", "Choose a watermark image you uploaded.")
     if not (opts.get("watermark_file_id") or opts.get("aspect") != "original" or opts.get("thumbnails")):
         raise api_error(400, "nothing_to_do", "Pick at least one change: watermark, 9:16, or thumbnails.")
-    _check_pending(db, user)
+    _check_pending(db, user, limits)
     try:
         check_disk_capacity()
     except MediaError as exc:
         raise api_error(507, exc.code, exc.message) from None
     source_job = db.get(MediaJob, mf.job_id) if mf.job_id else None
+    opts.update(_base_options(limits))
     job = MediaJob(user_id=user.id, kind=JobKind.PROCESS, input_file_id=mf.id, options=opts,
                    parent_job_id=source_job.id if source_job else None,
                    source_url=source_job.source_url if source_job else None,
                    platform=source_job.platform if source_job else None, stage="Waiting in queue")
     db.add(job)
     db.commit()
-    _enqueue(request, db, job, get_settings().process_timeout_seconds * 2)
+    _enqueue(request, db, job, get_settings().process_timeout_seconds * 2, limits.priority)
     audit(db, request, "process", user_id=user.id, target_type="job", target_id=job.id, input=mf.id, options=opts)
     return job_out(job)

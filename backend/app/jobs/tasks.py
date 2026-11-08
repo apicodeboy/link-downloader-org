@@ -13,10 +13,11 @@ from sqlalchemy import select
 
 from ..config import get_settings
 from ..db import session_scope
-from ..media.errors import MediaError
+from ..media.errors import JobCancelled, MediaError
 from ..media.ffmpeg import FFmpeg
 from ..media.formats import selector_for
-from ..media.storage import check_disk_capacity, mime_for, remove_tree, resolve_stored, safe_filename
+from ..media.storage import (check_disk_capacity, match_parent_group, mime_for, remove_tree, resolve_stored,
+                             safe_filename)
 from ..media.ytdlp import run_ytdlp
 from ..models import DownloadHistory, FileKind, JobKind, JobStatus, MediaFile, MediaJob, utcnow
 from ..security.url_guard import URLRejected, resolve_redirects, validate_url
@@ -43,8 +44,8 @@ def _fail(job_id: str, code: str, message: str, detail: str | None = None) -> No
         job.error_message = message
         job.error_detail = (detail or "")[-8000:] or None
         job.finished_at = utcnow()
-        job.stage = "Failed"
-        if job.kind in (JobKind.DOWNLOAD, JobKind.PROCESS):
+        job.stage = "Cancelled" if code == "cancelled" else "Failed"
+        if job.kind in (JobKind.DOWNLOAD, JobKind.PROCESS) and code != "cancelled":
             parent = db.get(MediaJob, job.parent_job_id) if job.parent_job_id else None
             db.add(DownloadHistory(
                 user_id=job.user_id, job_id=job.id, kind=job.kind, status="failed",
@@ -55,8 +56,15 @@ def _fail(job_id: str, code: str, message: str, detail: str | None = None) -> No
             ))
 
 
-def _expiry():
-    return utcnow() + timedelta(minutes=get_settings().retention_minutes)
+def _expiry(minutes: int | None = None):
+    return utcnow() + timedelta(minutes=minutes or get_settings().retention_minutes)
+
+
+def _check_cancel(job_id: str) -> None:
+    with session_scope() as db:
+        job = db.get(MediaJob, job_id)
+        if job is not None and job.cancel_requested:
+            raise JobCancelled()
 
 
 def run_job(job_id: str) -> None:
@@ -103,6 +111,7 @@ def _analyze(job_id: str, workdir: Path) -> None:
     with session_scope() as db:
         job = db.get(MediaJob, job_id)
         source_url, user_id = job.source_url, job.user_id
+        retention = (job.options or {}).get("retention_minutes")
     _update(job_id, status=JobStatus.ANALYZING, started_at=utcnow(), stage="Checking link", progress=0.05)
     url = resolve_redirects(validate_url(source_url, s), s)
     _update(job_id, resolved_url=url, stage="Reading video details", progress=0.2)
@@ -121,11 +130,12 @@ def _analyze(job_id: str, workdir: Path) -> None:
         ext = Path(thumb_src).suffix.lower() or ".jpg"
         dst = out_dir / f"thumbnail{ext}"
         shutil.move(thumb_src, dst)
+        match_parent_group(dst)
         with session_scope() as db:
             mf = MediaFile(
                 user_id=user_id, job_id=job_id, kind=FileKind.THUMBNAIL, path=f"{job_id}/{dst.name}",
                 filename=f"thumbnail{ext}", mime_type=mime_for(dst), size_bytes=dst.stat().st_size,
-                expires_at=_expiry(),
+                expires_at=_expiry(retention),
             )
             db.add(mf)
             db.flush()
@@ -142,6 +152,8 @@ def _download(job_id: str, workdir: Path) -> None:
         job = db.get(MediaJob, job_id)
         parent = db.get(MediaJob, job.parent_job_id)
         option = (job.options or {})["format"]
+        job_limits = (job.options or {}).get("limits") or {}
+        retention = (job.options or {}).get("retention_minutes")
         url = job.source_url
         user_id = job.user_id
         title = (parent.result or {}).get("title") if parent else None
@@ -154,8 +166,14 @@ def _download(job_id: str, workdir: Path) -> None:
     expected_streams = 2 if (option.get("needs_merge") or option["format_id"] == "best") else 1
     last = {"t": 0.0, "overall": 0.0}
 
+    max_mb = int(job_limits.get("max_filesize_mb") or s.max_filesize_mb)
+    max_duration = int(job_limits.get("max_duration_seconds") or s.max_duration_seconds)
+
     def on_event(msg: dict) -> None:
         now = time.monotonic()
+        if now - last.get("cancel_check", 0.0) >= 1.0:
+            last["cancel_check"] = now
+            _check_cancel(job_id)
         if msg.get("type") == "postprocess":
             _update(job_id, stage="Merging audio and video", progress=0.85)
             return
@@ -174,7 +192,7 @@ def _download(job_id: str, workdir: Path) -> None:
     res = run_ytdlp(
         {
             "mode": "download", "url": url, "workdir": str(workdir), "format": selector_for(option),
-            "max_filesize": s.max_filesize_mb * 1024 * 1024, "max_duration": s.max_duration_seconds,
+            "max_filesize": max_mb * 1024 * 1024, "max_duration": max_duration,
         },
         timeout=s.download_timeout_seconds, on_event=on_event,
     )
@@ -184,7 +202,7 @@ def _download(job_id: str, workdir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     dst = out_dir / "video.mp4"
     probe = FFmpeg(s).ensure_mp4(src, dst, timeout=s.process_timeout_seconds)
-    if probe.size > s.max_filesize_mb * 1024 * 1024:
+    if probe.size > max_mb * 1024 * 1024:
         dst.unlink(missing_ok=True)
         raise MediaError("too_large", "The video is larger than the configured size limit.")
     w, h = probe.display_size
@@ -193,7 +211,7 @@ def _download(job_id: str, workdir: Path) -> None:
         mf = MediaFile(
             user_id=user_id, job_id=job_id, kind=FileKind.VIDEO, path=f"{job_id}/video.mp4", filename=filename,
             mime_type="video/mp4", size_bytes=dst.stat().st_size, width=w, height=h, duration=probe.duration,
-            vcodec=probe.vcodec, acodec=probe.acodec, expires_at=_expiry(),
+            vcodec=probe.vcodec, acodec=probe.acodec, expires_at=_expiry(retention),
         )
         db.add(mf)
         db.flush()
@@ -221,6 +239,7 @@ def _process(job_id: str, workdir: Path) -> None:
     with session_scope() as db:
         job = db.get(MediaJob, job_id)
         opts = dict(job.options or {})
+        retention = opts.get("retention_minutes")
         user_id = job.user_id
         src_file = db.get(MediaFile, job.input_file_id)
         if src_file is None or not src_file.available:
@@ -258,7 +277,7 @@ def _process(job_id: str, workdir: Path) -> None:
                 user_id=user_id, job_id=job_id, parent_file_id=src_file.id, kind=FileKind.PROCESSED,
                 path=f"{job_id}/processed.mp4", filename=f"{src_name}_processed.mp4", mime_type="video/mp4",
                 size_bytes=dst.stat().st_size, width=w, height=h, duration=probe.duration, vcodec=probe.vcodec,
-                acodec=probe.acodec, expires_at=_expiry(),
+                acodec=probe.acodec, expires_at=_expiry(retention),
             )
             db.add(mf)
             db.flush()
@@ -277,7 +296,7 @@ def _process(job_id: str, workdir: Path) -> None:
                 tf = MediaFile(
                     user_id=user_id, job_id=job_id, parent_file_id=output_id or src_file.id,
                     kind=FileKind.THUMBNAIL, path=f"{job_id}/thumbs/{t.name}", filename=f"{src_name}_thumb_{i}.jpg",
-                    mime_type="image/jpeg", size_bytes=t.stat().st_size, expires_at=_expiry(),
+                    mime_type="image/jpeg", size_bytes=t.stat().st_size, expires_at=_expiry(retention),
                 )
                 db.add(tf)
                 db.flush()

@@ -88,7 +88,9 @@ Plan (nothing outside this list will be touched):
   * $APP           code releases + private Python $PY_VERSION, Node $NODE_MAJOR, PM2 $PM2_VERSION, uv
   * $DATA          database, temporary media (auto-deleted), backups
   * $ENVF  settings (created once, never overwritten)
-  * systemd units video-downloader-{api,web,cleanup}, video-downloader-worker@1..$WORKERS
+  * systemd units video-downloader-{api,web,cleanup}, video-downloader-worker@1..$WORKERS,
+    plus video-downloader-worker@owner (reserved for your own jobs)
+  * group 'videodl-media' so Nginx can send video files directly (fast downloads)
   * /usr/local/sbin/video-downloader-{deploy,rollback,cli}
   * /etc/sudoers.d/video-downloader (deploy user may run only deploy/rollback)
   * Nginx site for $DOMAIN -> API 127.0.0.1:$API_PORT, UI 127.0.0.1:$WEB_PORT
@@ -137,7 +139,20 @@ touch /home/videodl-deploy/.ssh/authorized_keys
 chown videodl-deploy:videodl-deploy /home/videodl-deploy/.ssh/authorized_keys
 chmod 0600 /home/videodl-deploy/.ssh/authorized_keys
 install -d -m 0755 "$APP" "$APP/releases" "$APP/shared" "$APP/shared/bin"
-install -d -m 0750 -o videodl -g videodl "$DATA" "$DATA/media" "$DATA/work" "$DATA/watermarks" "$DATA/backups"
+install -d -m 0751 -o videodl -g videodl "$DATA"
+install -d -m 0750 -o videodl -g videodl "$DATA/work" "$DATA/watermarks" "$DATA/backups"
+
+# Nginx serves finished videos straight from disk (X-Accel-Redirect) instead of streaming
+# them through Python. It gets read access to the media folder ONLY, via a dedicated group;
+# the database, settings and work files stay unreadable to it and to other sites.
+if ! getent group videodl-media >/dev/null; then groupadd --system videodl-media; record "group:videodl-media"; fi
+usermod -aG videodl-media videodl
+NGINX_USER="$(nginx -T 2>/dev/null | awk '$1=="user"{gsub(";","",$2); print $2; exit}')"
+NGINX_USER="${NGINX_USER:-www-data}"
+if id "$NGINX_USER" >/dev/null 2>&1 && ! id -nG "$NGINX_USER" | grep -qw videodl-media; then
+  usermod -aG videodl-media "$NGINX_USER"; record "group-member:$NGINX_USER:videodl-media"
+fi
+install -d -m 2750 -o videodl -g videodl-media "$DATA/media"   # setgid: new files inherit the group
 install -d -m 0750 -o root -g videodl "$ETC"
 install -d -m 0755 /var/cache/video-downloader
 record "dir:$APP"; record "dir:$DATA"; record "dir:$ETC"
@@ -202,6 +217,7 @@ if [ ! -f "$ENVF" ]; then
       -e "s|^DATA_DIR=.*|DATA_DIR=$DATA|" \
       -e "s|^SESSION_COOKIE_SECURE=.*|SESSION_COOKIE_SECURE=true|" \
       -e "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$DOMAIN|" \
+      -e "s|^USE_X_ACCEL_REDIRECT=.*|USE_X_ACCEL_REDIRECT=true|" \
       "$SRC_DIR/.env.example" > "$ENVF"
   {
     echo ""
@@ -245,7 +261,7 @@ for unit in video-downloader-api.service video-downloader-web.service video-down
 done
 systemctl daemon-reload
 systemctl enable video-downloader-api.service video-downloader-web.service video-downloader-cleanup.timer >/dev/null
-for i in $(seq 1 "$WORKERS"); do systemctl enable "video-downloader-worker@$i.service" >/dev/null; done
+for i in $(seq 1 "$WORKERS") owner; do systemctl enable "video-downloader-worker@$i.service" >/dev/null; done
 echo "Services enabled; they start on the first deploy."
 
 # ------------------------------------------------------------------ nginx

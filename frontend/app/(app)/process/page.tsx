@@ -43,7 +43,7 @@ export default function ProcessPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Process video</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Edit video</h1>
         <p className="mt-1 text-sm text-muted">
           Add your watermark, convert to 9:16 and create thumbnails. Existing creator watermarks are never removed or cropped out.
         </p>

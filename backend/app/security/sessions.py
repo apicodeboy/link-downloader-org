@@ -16,22 +16,27 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _ttl(user: User) -> timedelta:
+def _ttl(user: User, persistent: bool = False) -> timedelta:
     s = get_settings()
+    if persistent:
+        return timedelta(days=s.admin_remember_days)
     if user.role == "guest":
         return timedelta(days=s.guest_session_days)
     return timedelta(hours=s.session_ttl_hours)
 
 
-def _idle(user: User) -> timedelta:
+def _idle(user: User, persistent: bool = False) -> timedelta:
     s = get_settings()
+    if persistent:
+        return timedelta(days=s.admin_remember_days)
     # Guests keep their history for the whole session lifetime; accounts time out when idle.
     if user.role == "guest":
         return timedelta(days=s.guest_session_days)
     return timedelta(minutes=s.session_idle_minutes)
 
 
-def create_session(db: Session, user: User, ip: str | None, user_agent: str | None) -> tuple[str, UserSession]:
+def create_session(db: Session, user: User, ip: str | None, user_agent: str | None,
+                   persistent: bool = False) -> tuple[str, UserSession]:
     token = secrets.token_urlsafe(32)
     sess = UserSession(
         token_hash=_hash(token),
@@ -39,7 +44,8 @@ def create_session(db: Session, user: User, ip: str | None, user_agent: str | No
         user_id=user.id,
         ip=ip,
         user_agent=(user_agent or "")[:255],
-        expires_at=utcnow() + _ttl(user),
+        persistent=persistent,
+        expires_at=utcnow() + _ttl(user, persistent),
     )
     db.add(sess)
     db.commit()
@@ -53,7 +59,7 @@ def load_session(db: Session, token: str | None) -> UserSession | None:
     if sess is None:
         return None
     now = utcnow()
-    if sess.expires_at <= now or sess.last_seen_at + _idle(sess.user) <= now or not sess.user.is_active:
+    if sess.expires_at <= now or sess.last_seen_at + _idle(sess.user, sess.persistent) <= now or not sess.user.is_active:
         db.delete(sess)
         db.commit()
         return None
@@ -74,8 +80,8 @@ def revoke_all_for_user(db: Session, user_id: int) -> None:
     db.commit()
 
 
-def session_max_age(user: User) -> int:
-    return int(_ttl(user).total_seconds())
+def session_max_age(user: User, persistent: bool = False) -> int:
+    return int(_ttl(user, persistent).total_seconds())
 
 
 def purge_expired(db: Session) -> int:

@@ -65,8 +65,9 @@ def test_download_rejects_unknown_format(client, admin):
     assert r.status_code == 400 and r.json()["detail"]["code"] == "invalid_format"
 
 
-def test_download_rejects_too_long_video(client, admin):
-    analysis_id = _completed_analysis(admin, too_long=True, max_duration_seconds=60)
+def test_download_rejects_too_long_video(client, admin, settings):
+    settings.max_duration_seconds = 10  # the fixture video is 31 s
+    analysis_id = _completed_analysis(admin)
     r = client.post("/api/media/download", json={"analysis_job_id": analysis_id, "format_id": "best"})
     assert r.status_code == 400 and r.json()["detail"]["code"] == "too_long"
 

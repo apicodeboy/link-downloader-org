@@ -1,4 +1,7 @@
-"""Publishing preparation: draft -> approved -> (submit when a verified provider exists)."""
+"""Publishing preparation: draft -> approved -> (submit when a verified provider exists).
+
+Admin-only: the destination accounts are the site owner's social accounts, so guests on a
+public site must never see or target them."""
 from __future__ import annotations
 
 import io
@@ -12,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..audit import audit
 from ..config import get_settings
 from ..db import get_db
-from ..deps import api_error, current_user, rate_limited, require_admin, require_csrf
+from ..deps import api_error, rate_limited, require_admin, require_csrf
 from ..jobs.cleanup import file_root
 from ..media.storage import resolve_stored
 from ..models import FileKind, MediaFile, PublishingJob, User, utcnow
@@ -40,7 +43,7 @@ def _check_destinations(dest_ids: list[str]) -> None:
 
 
 @router.get("/config")
-def config(user: User = Depends(current_user)):
+def config(user: User = Depends(require_admin)):
     s = get_settings()
     p = get_provider()
     return {
@@ -60,14 +63,14 @@ def check(request: Request, user: User = Depends(require_admin), _csrf=Depends(r
 
 
 @router.get("/jobs")
-def list_jobs(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def list_jobs(user: User = Depends(require_admin), db: Session = Depends(get_db)):
     rows = db.scalars(select(PublishingJob).where(PublishingJob.user_id == user.id)
                       .order_by(PublishingJob.created_at.desc()).limit(100)).all()
     return {"items": [publishing_out(r) for r in rows]}
 
 
 @router.post("/jobs", status_code=201)
-def create_job(body: PublishingJobIn, request: Request, user: User = Depends(current_user),
+def create_job(body: PublishingJobIn, request: Request, user: User = Depends(require_admin),
                _csrf=Depends(require_csrf), db: Session = Depends(get_db)):
     mf = db.get(MediaFile, body.media_file_id)
     if mf is None or mf.user_id != user.id or mf.kind not in (FileKind.VIDEO, FileKind.PROCESSED):
@@ -84,7 +87,7 @@ def create_job(body: PublishingJobIn, request: Request, user: User = Depends(cur
 
 
 @router.patch("/jobs/{job_id}")
-def update_job(job_id: int, body: PublishingJobUpdate, request: Request, user: User = Depends(current_user),
+def update_job(job_id: int, body: PublishingJobUpdate, request: Request, user: User = Depends(require_admin),
                _csrf=Depends(require_csrf), db: Session = Depends(get_db)):
     pj = _job(db, user, job_id)
     if pj.status not in ("draft", "approved"):
@@ -103,7 +106,7 @@ def update_job(job_id: int, body: PublishingJobUpdate, request: Request, user: U
 
 
 @router.post("/jobs/{job_id}/approve")
-def approve(job_id: int, request: Request, user: User = Depends(current_user), _csrf=Depends(require_csrf),
+def approve(job_id: int, request: Request, user: User = Depends(require_admin), _csrf=Depends(require_csrf),
             db: Session = Depends(get_db)):
     pj = _job(db, user, job_id)
     if pj.status != "draft":
@@ -117,7 +120,7 @@ def approve(job_id: int, request: Request, user: User = Depends(current_user), _
 
 
 @router.post("/jobs/{job_id}/cancel")
-def cancel(job_id: int, request: Request, user: User = Depends(current_user), _csrf=Depends(require_csrf),
+def cancel(job_id: int, request: Request, user: User = Depends(require_admin), _csrf=Depends(require_csrf),
            db: Session = Depends(get_db)):
     pj = _job(db, user, job_id)
     if pj.status not in ("draft", "approved"):
@@ -152,7 +155,7 @@ def submit(job_id: int, request: Request, user: User = Depends(require_admin), _
 
 
 @router.get("/jobs/{job_id}/package")
-def package(job_id: int, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def package(job_id: int, request: Request, user: User = Depends(require_admin), db: Session = Depends(get_db)):
     """ZIP with the video and caption.txt, ready for manual upload to any scheduler."""
     pj = _job(db, user, job_id)
     mf = db.get(MediaFile, pj.media_file_id)

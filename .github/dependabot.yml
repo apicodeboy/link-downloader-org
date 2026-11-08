@@ -1,0 +1,29 @@
+# Platforms change often, and an old yt-dlp is the #1 cause of failed downloads on a public
+# site. Dependabot checks daily and opens a separate pull request for yt-dlp; CI tests it,
+# and merging it deploys it. Other packages are grouped into one pull request.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 3
+    groups:
+      yt-dlp:            # its own pull request, so it can be merged the same day
+        patterns: ["yt-dlp", "yt-dlp-ejs"]
+      python-deps:
+        patterns: ["*"]
+        exclude-patterns: ["yt-dlp", "yt-dlp-ejs"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      frontend-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
