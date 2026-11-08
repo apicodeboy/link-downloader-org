@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y -qq nginx
           echo 'server { listen 80; server_name other-site.test; return 200 "other site"; }' | sudo tee /etc/nginx/sites-available/other.conf
           sudo ln -s /etc/nginx/sites-available/other.conf /etc/nginx/sites-enabled/other.conf
-          sudo nginx -t && sudo systemctl reload nginx
+          sudo nginx -t && sudo systemctl enable --now nginx && sudo systemctl reload nginx
       - name: Inspect (read-only)
         run: sudo bash scripts/server-inspect.sh
       - name: Install

@@ -45,7 +45,7 @@ case "${1:-}" in
     site="$(nginx_site)"
     if [ -L "$site" ]; then rm -f -- "$site"
     elif [ -f "$site" ]; then mv -- "$site" "$site.disabled"; fi
-    if command -v nginx >/dev/null && nginx -t 2>/dev/null; then systemctl reload nginx; fi
+    if command -v nginx >/dev/null && nginx -t 2>/dev/null && systemctl is-active --quiet nginx; then systemctl reload nginx; fi
     say "Disabled. Code ($APP), data ($DATA) and settings ($ENVF) were kept."
     echo "To remove completely, see 'Uninstall' in docs/DEPLOYMENT.md." ;;
   --enable)
@@ -54,7 +54,7 @@ case "${1:-}" in
     elif [ -f /etc/nginx/conf.d/video-downloader.conf.disabled ]; then
       mv -- /etc/nginx/conf.d/video-downloader.conf.disabled /etc/nginx/conf.d/video-downloader.conf
     fi
-    nginx -t && systemctl reload nginx
+    nginx -t && { systemctl is-active --quiet nginx && systemctl reload nginx || true; }
     systemctl enable --now video-downloader-api.service video-downloader-web.service video-downloader-cleanup.timer
     for u in $(workers); do systemctl enable --now "$u"; done
     say "Enabled." ;;

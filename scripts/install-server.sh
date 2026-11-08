@@ -286,8 +286,12 @@ if [ "$SKIP_NGINX" -eq 0 ]; then
   fi
   if [ -n "$link" ] && [ ! -e "$link" ]; then ln -s "$site" "$link"; record "file:$link"; fi
   if nginx -t 2>/tmp/vd-nginx-test.log; then
-    systemctl reload nginx
-    echo "Nginx reloaded."
+    if systemctl is-active --quiet nginx; then
+      systemctl reload nginx
+      echo "Nginx reloaded."
+    else
+      warn "Nginx is installed but not running, so it was not started. Start it when ready: sudo systemctl start nginx"
+    fi
   else
     cat /tmp/vd-nginx-test.log
     [ -n "$link" ] && rm -f "$link"
