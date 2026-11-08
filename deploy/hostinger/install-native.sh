@@ -35,6 +35,30 @@ for line in open(sys.argv[1]):
                 sys.exit('STOP: An existing Nginx site already owns this name: '+path)
 PY
 setting() { sed -n "s/^$1=//p" "$cfg" | tail -n 1; }
+# Add both public origins while preserving any other configured origins and file ownership.
+ensure_origins() {
+  python3 - "$cfg" <<'PYORIGINS'
+import os, pathlib, stat, sys, tempfile
+p=pathlib.Path(sys.argv[1])
+old=p.read_text(); lines=old.splitlines(keepends=True)
+idx=next((i for i,l in enumerate(lines) if l.startswith("ALLOWED_ORIGINS=")),None)
+value=lines[idx].partition("=")[2].strip().strip("'\"") if idx is not None else ""
+origins=[o.strip() for o in value.split(",") if o.strip()]
+for origin in ("https://linkdownloader.org","https://www.linkdownloader.org"):
+    if origin not in origins: origins.append(origin)
+record="ALLOWED_ORIGINS="+",".join(origins)+"\n"
+if idx is None: lines.append(("\n" if old and not old.endswith("\n") else "")+record)
+else: lines[idx]=record
+new="".join(lines)
+if old==new: sys.exit(0)
+st=p.stat()
+with tempfile.NamedTemporaryFile(mode="w",dir=p.parent,delete=False) as tmp:
+    tmp.write(new); tmp.flush(); os.fchown(tmp.fileno(),st.st_uid,st.st_gid); os.fchmod(tmp.fileno(),stat.S_IMODE(st.st_mode))
+os.replace(tmp.name,p)
+print("changed")
+PYORIGINS
+}
+
 if [ -f "$cfg" ]; then
   [ "$(setting VD_DOMAIN)" = "$domain" ] || die 'Existing downloader settings belong to a different domain.'
 fi
@@ -143,6 +167,13 @@ PY
     if health "http://127.0.0.1:$api/api/health" 2>/dev/null; then break; fi
     sleep 2
   done
+  if [ "$(ensure_origins)" = changed ]; then
+    systemctl restart video-downloader-api
+    for ((i=0;i<25;i++)); do
+      if health "http://127.0.0.1:$api/api/health" 2>/dev/null; then break; fi
+      sleep 2
+    done
+  fi
   health "http://127.0.0.1:$api/api/health"
   systemctl is-active --quiet video-downloader-worker@owner
   for ((i=1;i<=worker_count;i++)); do systemctl is-active --quiet "video-downloader-worker@$i"; done
@@ -152,7 +183,9 @@ PY
     status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$host:80:127.0.0.1" "http://$host/api/health")
     case "$status" in
       200) health "http://$host/api/health" --resolve "$host:80:127.0.0.1";;
-      301|302|307|308) health "https://$host/api/health" --resolve "$host:443:127.0.0.1";;
+      301|302|307|308)
+        redirect=$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 10 --resolve "$host:80:127.0.0.1" "http://$host/api/health")
+        case "$redirect" in "https://$domain/api/health"|"https://www.$domain/api/health") :;; *) die "Unexpected redirect for $host.";; esac;;
       *) die "Nginx returned $status for $host.";;
     esac
   done
