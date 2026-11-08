@@ -18,7 +18,7 @@ export UV_PYTHON_INSTALL_DIR="$APP/shared/python" UV_CACHE_DIR=/var/cache/video-
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 say() { echo "==> $*"; }
-envget() { grep -E "^$1=" "$ENVF" | tail -1 | cut -d= -f2- | tr -d '"'"'"; }
+envget() { { grep -E "^$1=" "$ENVF" | tail -1 | cut -d= -f2- | tr -d '"'"'"; } || true; }
 
 [ "$(id -u)" -eq 0 ] || die "run with sudo"
 [ $# -eq 1 ] || die "usage: video-downloader-deploy <release.tar.gz>"

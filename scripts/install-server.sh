@@ -62,7 +62,7 @@ esac
 
 # ------------------------------------------------------------------ preflight
 say "Preflight checks"
-port_owner() { ss -tlnpH "sport = :$1" 2>/dev/null | grep -oE 'users:\(\("[^"]+' | cut -d'"' -f2 | head -1; }
+port_owner() { { ss -tlnpH "sport = :$1" 2>/dev/null | grep -oE 'users:\(\("[^"]+' | cut -d'"' -f2 | head -1; } || true; }
 for p in "$API_PORT" "$WEB_PORT"; do
   owner="$(port_owner "$p")"
   if [ -n "$owner" ] && ! systemctl is-active --quiet video-downloader-api video-downloader-web 2>/dev/null; then
@@ -183,7 +183,8 @@ echo "Python: $("$APP/shared/bin/uv" python find "$PY_VERSION")"
 say "Installing private Node.js $NODE_MAJOR (from nodejs.org, checksum verified)"
 if [ ! -x "$APP/shared/node/bin/node" ]; then
   sums="$(curl -fsSL "https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/SHASUMS256.txt")"
-  file="$(echo "$sums" | awk '{print $2}' | grep -E "^node-v[0-9.]+-linux-${NODE_ARCH}\.tar\.xz$" | head -1)"
+  file="$({ echo "$sums" | awk '{print $2}' | grep -E "^node-v[0-9.]+-linux-${NODE_ARCH}\.tar\.xz$" | head -1; } || true)"
+  [ -n "$file" ] || die "Could not find a Node.js $NODE_MAJOR download for linux-$NODE_ARCH on nodejs.org."
   sha="$(echo "$sums" | awk -v f="$file" '$2==f {print $1}')"
   fetch_verified "https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/$file" "$sha" /tmp/node.tar.xz
   install -d -m 0755 "$APP/shared/node"

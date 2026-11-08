@@ -20,7 +20,7 @@ say() { echo "==> $*"; }
 
 workers() {
   local n
-  n="$(grep -E '^VD_WORKERS=' "$ENVF" 2>/dev/null | tail -1 | cut -d= -f2-)"
+  n="$({ grep -E '^VD_WORKERS=' "$ENVF" 2>/dev/null | tail -1 | cut -d= -f2-; } || true)"
   for i in $(seq 1 "${n:-1}") owner; do echo "video-downloader-worker@$i.service"; done
 }
 units() { echo video-downloader-api.service video-downloader-web.service video-downloader-cleanup.timer; workers; }
@@ -62,7 +62,7 @@ case "${1:-}" in
     BK="$(readlink -f "${2:-}")"
     case "$BK" in "$DATA"/backups/app-*.db) ;; *) die "pick a file from $DATA/backups/" ;; esac
     [ -f "$BK" ] || die "not found: $BK"
-    DB_URL="$(grep -E '^DATABASE_URL=' "$ENVF" | tail -1 | cut -d= -f2-)"
+    DB_URL="$({ grep -E '^DATABASE_URL=' "$ENVF" | tail -1 | cut -d= -f2-; } || true)"
     [[ "$DB_URL" == sqlite:///* ]] || die "automatic restore supports SQLite only"
     DB_FILE="/${DB_URL#sqlite:///}"; DB_FILE="/${DB_FILE#/}"
     read -r -p "Replace $DB_FILE with $BK? Current DB is saved first. [y/N] " a; [[ "$a" =~ ^[Yy]$ ]] || exit 0
@@ -85,7 +85,7 @@ case "${1:-}" in
     say "Switching from $(basename "${CUR:-none}") to $(basename "$TARGET")"
     ln -sfn "$TARGET" "$APP/current.new" && mv -Tf "$APP/current.new" "$APP/current"
     restart_all
-    API_PORT="$(grep -E '^VD_API_PORT=' "$ENVF" | cut -d= -f2-)"
+    API_PORT="$({ grep -E '^VD_API_PORT=' "$ENVF" | cut -d= -f2-; } || true)"
     sleep 3
     curl -fsS "http://127.0.0.1:$API_PORT/api/health" && echo && say "Rollback complete" \
       || echo "API not healthy yet; check: journalctl -u video-downloader-api -n 50"
